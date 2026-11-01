@@ -105,8 +105,8 @@ export default function RecommendationsView({ recommendations, profile, lang = '
           )}
         </div>
 
-        {/* IF USER HAS NO PERSONAL PLAN YET: BEAUTIFUL EMPTY STATE */}
-        {!hasPersonalPlans ? (
+        {/* IF USER HAS NO PERSONAL PLAN YET AND NO CALCULATED ADVISORY: BEAUTIFUL EMPTY STATE */}
+        {(!hasPersonalPlans && !activeRec && !recommendations?.top_recommendation) ? (
           <div className="bg-gradient-to-br from-[#0F3D2E] to-[#144f3c] rounded-3xl p-8 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border border-emerald-800">
             <div className="space-y-3 max-w-xl">
               <div className="inline-flex items-center space-x-2 bg-amber-400/20 text-amber-300 px-3 py-1 rounded-full text-xs font-bold">
@@ -148,10 +148,10 @@ export default function RecommendationsView({ recommendations, profile, lang = '
                 <div className="flex items-center space-x-2 mb-1.5">
                   <span className="bg-emerald-100 text-[#0F3D2E] px-3 py-0.5 rounded-full text-xs font-extrabold tracking-wide flex items-center space-x-1">
                     <Sparkles className="w-3.5 h-3.5 text-[#C28A17] mr-1" />
-                    <span>{t.createdWithSaarthi || "Created with Saarthi"}</span>
+                    <span>{hasPersonalPlans ? (t.createdWithSaarthi || "Created with Saarthi") : (t.topRecommendation || "Top Advisory Recommendation")}</span>
                   </span>
                   <span className="text-xs font-bold text-stone-500 capitalize">
-                    {activePlan.category?.replace('_', ' ')}
+                    {(activePlan?.category || activeRec?.sector)?.replace('_', ' ')}
                   </span>
                 </div>
                 <h3 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight">
@@ -161,9 +161,9 @@ export default function RecommendationsView({ recommendations, profile, lang = '
                   {lang === 'hi' ? (activeRec.description_hi || activeRec.description) : (lang === 'te' ? (activeRec.description_te || activeRec.description) : activeRec.description)}
                 </p>
                 <div className="mt-2 text-xs text-emerald-800 font-bold flex flex-wrap items-center gap-y-1">
-                  <span>📍 {activePlan?.location?.village || (isPersonalActive ? profile?.village_name : null) || 'Local Area'}, {activePlan?.location?.district || (isPersonalActive ? profile?.district : null) || ''}{activePlan?.location?.state || (isPersonalActive ? profile?.state : null) ? `, ${activePlan?.location?.state || profile?.state}` : ''}</span>
+                  <span>📍 {activePlan?.location?.village || (isPersonalActive ? profile?.village_name : null) || profile?.village_name || 'Local Area'}, {activePlan?.location?.district || (isPersonalActive ? profile?.district : null) || profile?.district || ''}{activePlan?.location?.state || (isPersonalActive ? profile?.state : null) || profile?.state ? `, ${activePlan?.location?.state || profile?.state}` : ''}</span>
                   <span className="mx-2 hidden sm:inline">•</span>
-                  <span>Available Capital: ₹{((isPersonalActive ? profile?.available_capital : activePlan?.capital) ?? activePlan?.capital ?? profile?.available_capital ?? 0).toLocaleString('en-IN')}</span>
+                  <span>Available Capital: ₹{((profile?.available_capital !== undefined && profile?.available_capital !== null && !isNaN(parseFloat(profile.available_capital))) ? parseFloat(profile.available_capital) : ((isPersonalActive ? profile?.available_capital : activePlan?.capital) ?? activePlan?.capital ?? 0)).toLocaleString('en-IN')}</span>
                   <span className="mx-2 hidden sm:inline">•</span>
                   <span className="text-stone-700">Project Cost: ₹{(fin.project_cost || activePlan?.requiredInvestment || 0).toLocaleString('en-IN')}</span>
                 </div>
@@ -175,11 +175,11 @@ export default function RecommendationsView({ recommendations, profile, lang = '
                   {t.suitability || "Suitability"}
                 </span>
                 <span className="text-4xl font-black block leading-none my-1 text-amber-300">
-                  {activePlan.suitabilityScore}
+                  {activePlan?.suitabilityScore || activeRec?.overall_suitability_score || 90}
                 </span>
                 <span className="text-[10px] opacity-80 block">{t.outOf100 || "out of 100"}</span>
                 <div className="mt-2 pt-2 border-t border-white/20 text-[10px] font-semibold text-emerald-100">
-                  {t.confidence || "Confidence"}: {activePlan.confidenceScore}%
+                  {t.confidence || "Confidence"}: {activePlan?.confidenceScore || activeRec?.confidence_score || 92}%
                 </div>
               </div>
             </div>

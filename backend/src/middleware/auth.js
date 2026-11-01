@@ -30,4 +30,39 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-module.exports = { verifyToken };
+/**
+ * Optional JWT Verification Middleware
+ * If token is present and valid, attaches decoded user to req.user.
+ * If token is omitted or invalid, allows request to proceed with req.user = null.
+ */
+const optionalToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) {
+    req.user = null;
+    return next();
+  }
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
+    req.user = null;
+    return next();
+  }
+
+  const token = parts[1];
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+    req.user = decoded;
+    return next();
+  } catch (err) {
+    req.user = null;
+    return next();
+  }
+};
+
+module.exports = { verifyToken, optionalToken };
+

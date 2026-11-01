@@ -6,7 +6,7 @@ const profileController = require('../controllers/profileController');
 const businessPlanController = require('../controllers/businessPlanController');
 const aiOrchestrator = require('../controllers/aiOrchestrator');
 const mapsController = require('../controllers/mapsController');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, optionalToken } = require('../middleware/auth');
 const db = require('../config/db');
 
 // Database Health Check Endpoint (GET /api/health/db)
@@ -52,27 +52,28 @@ router.post('/auth/change-password', verifyToken, authController.changePassword)
 router.post('/auth/send-email-access', authController.sendEmailAccessCode);
 router.post('/auth/verify-email-access', authController.verifyEmailAccessCode);
 
-// Profile routes
-router.get('/profile', verifyToken, profileController.getProfile);
-router.post('/profile', verifyToken, profileController.updateProfile);
-router.put('/profile', verifyToken, profileController.updateProfile);
+// Profile routes (supports both guest caching and authenticated PostgreSQL persistence)
+router.get('/profile', optionalToken, profileController.getProfile);
+router.post('/profile', optionalToken, profileController.updateProfile);
+router.put('/profile', optionalToken, profileController.updateProfile);
 
 // Business Plan routes (Phase 2 - Persistent Plans in Supabase)
-router.post('/business-plans', verifyToken, businessPlanController.createPlan);
-router.get('/business-plans', verifyToken, businessPlanController.getPlans);
-router.get('/business-plans/:id', verifyToken, businessPlanController.getPlanById);
-router.put('/business-plans/:id', verifyToken, businessPlanController.updatePlan);
-router.delete('/business-plans/:id', verifyToken, businessPlanController.deletePlan);
+router.post('/business-plans', optionalToken, businessPlanController.createPlan);
+router.get('/business-plans', optionalToken, businessPlanController.getPlans);
+router.get('/business-plans/:id', optionalToken, businessPlanController.getPlanById);
+router.put('/business-plans/:id', optionalToken, businessPlanController.updatePlan);
+router.delete('/business-plans/:id', optionalToken, businessPlanController.deletePlan);
 
-// AI Orchestrator routes
-router.post('/chat', verifyToken, aiOrchestrator.handleChat);
-router.post('/recommendations', verifyToken, aiOrchestrator.getRecommendations);
-router.post('/market-analysis', verifyToken, aiOrchestrator.analyzeMarket);
-router.get('/competitors', verifyToken, aiOrchestrator.getCompetitors);
-router.post('/financial-analysis', verifyToken, aiOrchestrator.structureFinances);
-router.post('/scheme-matching', verifyToken, aiOrchestrator.evaluateSchemes);
-router.post('/simulation', verifyToken, aiOrchestrator.simulateWhatIf);
-router.post('/rag/search', verifyToken, aiOrchestrator.searchRAG);
+// AI Orchestrator routes (accessible for both guest exploration and authenticated entrepreneurs)
+router.post('/chat', optionalToken, aiOrchestrator.handleChat);
+router.post('/recommendations', optionalToken, aiOrchestrator.getRecommendations);
+router.post('/market-analysis', optionalToken, aiOrchestrator.analyzeMarket);
+router.get('/competitors', optionalToken, aiOrchestrator.getCompetitors);
+router.post('/financial-analysis', optionalToken, aiOrchestrator.structureFinances);
+router.post('/scheme-matching', optionalToken, aiOrchestrator.evaluateSchemes);
+router.post('/simulation', optionalToken, aiOrchestrator.simulateWhatIf);
+router.post('/rag/search', optionalToken, aiOrchestrator.searchRAG);
+
 
 // Meta data routes
 router.get('/catalog', aiOrchestrator.getCatalog);

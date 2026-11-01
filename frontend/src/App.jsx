@@ -369,14 +369,18 @@ export default function App() {
                     setProfile={setProfile}
                     onRunAdvisory={async (wizardProfile) => {
                       const profToUse = wizardProfile || profile;
+                      let computedRecs = null;
                       try {
                         const res = await axios.post('/api/profile', profToUse);
                         const authProfile = (res.data && res.data.profile) ? res.data.profile : profToUse;
                         setProfile((prev) => ({ ...prev, ...authProfile }));
-                        await runDecisionAdvisory(authProfile);
+                        computedRecs = await runDecisionAdvisory(authProfile);
                       } catch (err) {
                         console.warn("Error persisting profile on advisory run:", err);
-                        await runDecisionAdvisory(profToUse);
+                        computedRecs = await runDecisionAdvisory(profToUse);
+                      }
+                      if (computedRecs) {
+                        setRecommendations(computedRecs);
                       }
                       setActiveTab('recommendations');
                     }}

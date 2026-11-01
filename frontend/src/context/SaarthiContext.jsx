@@ -117,17 +117,65 @@ export function SaarthiProvider({ children, auth, profile, onProfileUpdate, lang
   const allPlans = [...personalPlans, ...defaultBusinessPlans];
 
   // Helper to get current active plan object
+  // Helper to get current active plan object
   const getActivePlan = () => {
-    const found = allPlans.find(p => p.id === activePlanId);
-    if (found) return found;
+    // 1. If an active personal plan is explicitly selected, prioritize it
+    const activePersonal = personalPlans.find(p => p.id === activePlanId);
+    if (activePersonal) return activePersonal;
 
+    // 2. If fresh recommendations exist for entrepreneur, match or synthesize personal plan
     if (recommendations && recommendations.top_recommendation) {
-      const recCat = recommendations.top_recommendation.category_code;
-      const matching = personalPlans.find(p => p.category_code === recCat || p.business_type === recCat);
+      const topRec = recommendations.top_recommendation;
+      const recCat = topRec.category_code;
+      const matching = personalPlans.find(p => 
+        (recCat && (p.category_code === recCat || p.business_type === recCat)) ||
+        (p.businessName && topRec.name_en && p.businessName.toLowerCase() === topRec.name_en.toLowerCase())
+      );
       if (matching) return matching;
+
+      // Resiliently synthesize personal plan object from top calculated recommendation
+      return {
+        id: `rec_${topRec.category_code || 'top'}`,
+        userId: userId,
+        type: 'personal',
+        isPersonal: true,
+        source: 'advisory',
+        businessName: topRec.name_en || profile?.business_interest || 'Rural Enterprise',
+        category: topRec.sector || 'MICRO_ENTERPRISE',
+        category_code: topRec.category_code || 'MICRO_ENTERPRISE',
+        description: topRec.description || '',
+        description_hi: topRec.description_hi,
+        description_te: topRec.description_te,
+        location: {
+          village: profile?.village_name || '',
+          mandal: profile?.mandal_or_block || '',
+          district: profile?.district || '',
+          state: profile?.state || ''
+        },
+        capital: (profile?.available_capital !== undefined && profile?.available_capital !== null && !isNaN(parseFloat(profile.available_capital)))
+          ? parseFloat(profile.available_capital)
+          : parseFloat(topRec.capital || 0),
+        requiredInvestment: topRec.financials?.project_cost || 0,
+        suitabilityScore: topRec.overall_suitability_score || 90,
+        confidenceScore: topRec.confidence_score || 92,
+        financials: topRec.financials || {},
+        market: topRec.market || {},
+        risks: topRec.risks || {},
+        top_scheme: topRec.top_scheme || {},
+        matched_schemes: topRec.matched_schemes || [],
+        why_recommended_en: topRec.why_recommended_en,
+        why_recommended_hi: topRec.why_recommended_hi,
+        why_recommended_te: topRec.why_recommended_te,
+        rawRecommendation: topRec
+      };
     }
 
-    return personalPlans[0] || defaultBusinessPlans[0];
+    // 3. Fallback to newest personal plan if any exist
+    if (personalPlans.length > 0) return personalPlans[0];
+
+    // 4. Default reference plan (for browsing demonstration examples)
+    const activeDefault = defaultBusinessPlans.find(p => p.id === activePlanId);
+    return activeDefault || defaultBusinessPlans[0];
   };
 
   // Helper to get active recommendation object payload for sub-components
@@ -148,7 +196,7 @@ export function SaarthiProvider({ children, auth, profile, onProfileUpdate, lang
 
   // Save a business plan directly to Supabase PostgreSQL database
   const savePlanToDatabase = async (planToSave) => {
-    if (!auth || !auth.isAuthenticated || !planToSave) return planToSave;
+    if (!planToSave) return null;
     try {
       const isUuid = planToSave.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(planToSave.id);
       const payload = {
@@ -173,6 +221,12 @@ export function SaarthiProvider({ children, auth, profile, onProfileUpdate, lang
       }
     } catch (err) {
       console.warn("Notice saving plan to database:", err.message);
+      // Resilient fallback: ensure local state keeps the plan
+      setPersonalPlans(prev => {
+        const exists = prev.some(p => p.id === planToSave.id);
+        return exists ? prev : [planToSave, ...prev];
+      });
+      setActivePlanId(planToSave.id);
     }
     return planToSave;
   };
@@ -232,14 +286,16 @@ export function SaarthiProvider({ children, auth, profile, onProfileUpdate, lang
       rawRecommendation: recommendation
     };
 
+    // Immediately add to personalPlans in state & localStorage so UI updates synchronously
+    setPersonalPlans(prev => [planObj, ...prev.filter(p => p.category_code !== planObj.category_code && p.business_type !== planObj.category_code)]);
+    setActivePlanId(planObj.id);
+
+    // Save to Supabase database if authenticated
     if (auth && auth.isAuthenticated) {
       const saved = await savePlanToDatabase(planObj);
       return saved;
-    } else {
-      setPersonalPlans(prev => [planObj, ...prev.filter(p => p.category_code !== planObj.category_code)]);
-      setActivePlanId(planObj.id);
-      return planObj;
     }
+    return planObj;
   };
 
   // When fresh recommendations are calculated for the current profile, synchronize as active plan
@@ -263,7 +319,7 @@ export function SaarthiProvider({ children, auth, profile, onProfileUpdate, lang
           });
         }
         setActivePlanId(existing.id);
-      } else if (auth && auth.isAuthenticated) {
+      } else {
         activateRecommendationAsPlan(topRec, profile);
       }
     }
