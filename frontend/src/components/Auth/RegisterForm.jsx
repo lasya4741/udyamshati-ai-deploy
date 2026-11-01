@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, ArrowRight, Sprout, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { translations } from '../../locales/translations';
+import { authService } from '../../services/authService';
 
 export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin, lang }) {
   const t = translations[lang] || translations.en;
@@ -14,6 +15,7 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin, lang 
   });
 
   const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,6 +24,9 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin, lang 
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }));
+    }
+    if (apiError) {
+      setApiError('');
     }
   };
 
@@ -55,21 +60,26 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin, lang 
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      onRegisterSuccess({
-        name: formData.fullName.trim(),
-        mobile: formData.mobile.replace(/\D/g, ''),
-        email: formData.email.trim(),
-        loginTime: Date.now(),
-        isAuthenticated: true,
-        isDemo: false,
-      });
-    }, 400);
+    setApiError('');
+
+    try {
+      const res = await authService.registerUser(formData);
+      setIsSubmitting(false);
+
+      if (res.status === 'SUCCESS') {
+        onRegisterSuccess(res.session);
+      } else {
+        setApiError(res.message || 'Registration failed. Please check your credentials.');
+      }
+    } catch (err) {
+      setIsSubmitting(false);
+      setApiError('Unable to connect to registration server. Please try again.');
+    }
   };
 
   return (
@@ -231,6 +241,14 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin, lang 
             </p>
           )}
         </div>
+
+        {/* API ERROR BANNER */}
+        {apiError && (
+          <div className="flex items-start space-x-2 text-xs font-semibold p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 animate-fadeIn">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <span>{apiError}</span>
+          </div>
+        )}
 
         {/* PRIMARY BUTTON */}
         <button

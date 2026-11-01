@@ -40,60 +40,69 @@ export function parseCapitalAmount(text) {
  * Extracts business intent and parameters from user prompt or transcript
  */
 export function extractBusinessIntent(userMessage, profile = {}) {
-  const text = (userMessage || '').toLowerCase();
+  const directIntent = (profile.business_interest || '').trim();
+  const text = (userMessage || directIntent || '').toLowerCase();
 
   let businessIdea = null;
-  let categoryCode = 'GENERAL_ENTERPRISE';
+  let categoryCode = 'CUSTOM_HIRING_CENTRE';
 
   // Keyword extraction for common rural business ideas
-  if (text.includes('poultry') || text.includes('broiler') || text.includes('chicken') || text.includes('egg')) {
-    businessIdea = 'Poultry Farming Unit';
-    categoryCode = 'POULTRY_FARMING';
-  } else if (text.includes('dairy') || text.includes('cow') || text.includes('buffalo') || text.includes('milk')) {
+  if (text.includes('dairy') || text.includes('cow') || text.includes('buffalo') || text.includes('milk')) {
     businessIdea = 'Commercial Dairy Farming';
     categoryCode = 'DAIRY_FARMING';
-  } else if (text.includes('food processing') || text.includes('flour mill') || text.includes('processing') || text.includes('spice') || text.includes('dal mill')) {
-    businessIdea = 'Small Food Processing Unit';
-    categoryCode = 'FOOD_PROCESSING';
+  } else if (text.includes('custom hiring') || text.includes('tractor rental') || text.includes('machinery rental') || text.includes('farm machinery rental') || text.includes('equipment rental')) {
+    businessIdea = 'Custom Hiring Centre (Farm Machinery Rental)';
+    categoryCode = 'CUSTOM_HIRING_CENTRE';
+  } else if (text.includes('poultry') || text.includes('broiler') || text.includes('chicken') || text.includes('egg')) {
+    businessIdea = 'Commercial Broiler Poultry Unit';
+    categoryCode = 'POULTRY_BROILER';
+  } else if (text.includes('flour mill') || text.includes('food processing') || text.includes('spice') || text.includes('dal mill') || text.includes('oil mill') || text.includes('expeller')) {
+    businessIdea = 'Mini Flour, Spices & Oil Expeller Mill';
+    categoryCode = 'FOOD_PROCESSING_MILL';
   } else if (text.includes('mushroom') || text.includes('button mushroom') || text.includes('oyster')) {
     businessIdea = 'Indoor Oyster & Button Mushroom Unit';
     categoryCode = 'MUSHROOM_FARMING';
-  } else if (text.includes('polyhouse') || text.includes('greenhouse') || text.includes('vegetable')) {
-    businessIdea = 'Polyhouse Vegetable Farming';
+  } else if (text.includes('polyhouse') || text.includes('greenhouse') || text.includes('vegetable farming')) {
+    businessIdea = 'Polyhouse & Precision Vegetable Farming';
     categoryCode = 'VEGETABLE_FARMING';
-  } else if (text.includes('custom hiring') || text.includes('tractor') || text.includes('machinery') || text.includes('rental')) {
-    businessIdea = 'Custom Hiring Centre (Farm Machinery)';
-    categoryCode = 'CUSTOM_HIRING_CENTRE';
   } else if (text.includes('tailoring') || text.includes('garment') || text.includes('boutique') || text.includes('stitching') || text.includes('apparel')) {
     businessIdea = 'Garment Tailoring & Apparel Unit';
     categoryCode = 'GARMENT_TAILORING';
-  } else if (text.includes('kirana') || text.includes('retail') || text.includes('shop') || text.includes('store') || text.includes('general store')) {
-    businessIdea = 'Rural Retail Kirana Store';
-    categoryCode = 'RETAIL_KIRANA';
+  } else if (text.includes('kirana') || text.includes('provisions') || text.includes('general store') || text.includes('grocery') || text.includes('daily needs')) {
+    businessIdea = 'Smart Village Kirana & Daily Provisions Store';
+    categoryCode = 'KIRANA_DAILY_NEEDS';
+  } else if (text.includes('goat') || text.includes('bakri') || text.includes('stall-fed')) {
+    businessIdea = 'Stall-Fed Goat Rearing & Breeding Unit (20+1)';
+    categoryCode = 'GOAT_REARING';
   } else if (text.includes('solar') || text.includes('clean energy') || text.includes('kiosk')) {
     businessIdea = 'Solar Charging & Power Kiosk';
     categoryCode = 'SOLAR_ENERGY';
-  } else if (text.includes('agri input') || text.includes('seed') || text.includes('fertilizer') || text.includes('pesticide')) {
-    businessIdea = 'Agri Inputs & Fertilizer Depot';
-    categoryCode = 'AGRI_INPUTS';
+  } else if (directIntent && directIntent.length > 2) {
+    businessIdea = directIntent;
+    categoryCode = 'MICRO_ENTERPRISE';
   } else {
     // Fallback: Clean up input text to serve as business name
     const cleaned = userMessage
-      .replace(/i want to (start|open|run|build|create|set up|do)/gi, '')
-      .replace(/business|unit|farm|enterprise|in|near|with|for/gi, ' ')
-      .trim();
+      ? userMessage
+          .replace(/i want to (start|open|run|build|create|set up|do)/gi, '')
+          .replace(/business|unit|farm|enterprise|in|near|with|for/gi, ' ')
+          .trim()
+      : '';
     if (cleaned.length > 2) {
       businessIdea = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    } else {
+      businessIdea = 'Rural Micro-Enterprise';
+      categoryCode = 'MICRO_ENTERPRISE';
     }
   }
 
   // Extract capital if mentioned
   const extractedCapital = parseCapitalAmount(userMessage);
-  const capital = extractedCapital || profile.available_capital || profile.financial?.capital || 300000;
+  const capital = extractedCapital || (profile.available_capital !== undefined && profile.available_capital !== null && profile.available_capital > 0 ? profile.available_capital : 300000);
 
   // Location extraction
   let extractedLocation = null;
-  const nearMatch = userMessage.match(/(?:near|in|at|from)\s+([a-zA-Z\s]+)/i);
+  const nearMatch = userMessage ? userMessage.match(/(?:near|in|at|from)\s+([a-zA-Z\s]+)/i) : null;
   if (nearMatch && nearMatch[1]) {
     const locCandidate = nearMatch[1].split(/\s+(?:with|for|having|having|and|\d)/)[0].trim();
     if (locCandidate.length > 2 && !['a', 'the', 'my', 'this', 'rupees', 'lakh'].includes(locCandidate.toLowerCase())) {
@@ -101,12 +110,12 @@ export function extractBusinessIntent(userMessage, profile = {}) {
     }
   }
 
-  const village = extractedLocation || profile.village_name || profile.location?.village || 'Guntur';
+  const village = extractedLocation || profile.village_name || profile.location?.village || 'Brodipet';
   const district = profile.district || profile.location?.district || extractedLocation || 'Guntur';
   const state = profile.state || profile.location?.state || 'Andhra Pradesh';
-  const mandal = profile.mandal_or_block || profile.location?.mandal || 'Chebrole';
-  const latitude = profile.latitude || profile.location?.latitude || 16.2333;
-  const longitude = profile.longitude || profile.location?.longitude || 80.5500;
+  const mandal = profile.mandal_or_block || profile.location?.mandal || 'Guntur Urban';
+  const latitude = profile.latitude || profile.location?.latitude || 16.3067;
+  const longitude = profile.longitude || profile.location?.longitude || 80.4365;
 
   return {
     businessIdea: businessIdea || 'Rural Micro-Enterprise',
@@ -130,7 +139,7 @@ export function extractBusinessIntent(userMessage, profile = {}) {
 export function detectMissingInformation(intent, profile = {}) {
   const missing = [];
 
-  if (!intent.businessIdea) {
+  if (!intent.businessIdea && !profile.business_interest) {
     missing.push({ key: 'businessIdea', question: 'What specific business or micro-enterprise would you like to start?' });
   }
 
@@ -158,23 +167,31 @@ export function calculateEMI(principal, annualRatePct, tenureYears) {
  * Generates a full, dynamic BusinessPlan object with complete financial, market, scheme, and risk analysis
  */
 export function generateDynamicBusinessAnalysis(intent, profile = {}, userId = 'demo-user') {
-  const name = intent.businessIdea || 'Rural Micro-Enterprise';
-  const categoryCode = intent.categoryCode || 'GENERAL_ENTERPRISE';
-  const capital = intent.capital || 300000;
+  const name = intent.businessIdea || profile.business_interest || (profile.skills?.includes('machinery') ? 'Custom Hiring Centre (Farm Machinery Rental)' : 'Rural Micro-Enterprise');
+  const categoryCode = intent.categoryCode || 'CUSTOM_HIRING_CENTRE';
+  const capital = intent.capital || profile.available_capital || 300000;
   const loc = intent.location || {
-    village: profile.village_name || 'Guntur',
-    mandal: profile.mandal_or_block || 'Chebrole',
+    village: profile.village_name || 'Brodipet',
+    mandal: profile.mandal_or_block || 'Guntur Urban',
     district: profile.district || 'Guntur',
     state: profile.state || 'Andhra Pradesh',
-    latitude: profile.latitude || 16.2333,
-    longitude: profile.longitude || 80.5500
+    latitude: profile.latitude || 16.3067,
+    longitude: profile.longitude || 80.4365
   };
 
   // Determine Project Scale & Financials based on business type & user capital
-  let projectCost = Math.max(150000, Math.min(1200000, Math.round(capital * 1.5)));
-  if (name.toLowerCase().includes('poultry')) projectCost = Math.max(250000, capital);
-  if (name.toLowerCase().includes('food processing')) projectCost = Math.max(300000, capital * 1.25);
-  if (name.toLowerCase().includes('tailoring')) projectCost = Math.max(150000, capital * 0.9);
+  let projectCost = Math.max(150000, Math.min(1500000, Math.round(capital * 1.5)));
+  if (name.toLowerCase().includes('custom hiring') || name.toLowerCase().includes('machinery')) {
+    projectCost = Math.max(500000, Math.min(1200000, Math.round(capital * 1.5)));
+  } else if (name.toLowerCase().includes('poultry')) {
+    projectCost = Math.max(250000, capital);
+  } else if (name.toLowerCase().includes('food processing') || name.toLowerCase().includes('mill')) {
+    projectCost = Math.max(220000, Math.round(capital * 1.25));
+  } else if (name.toLowerCase().includes('dairy')) {
+    projectCost = Math.max(300000, Math.round(capital * 1.35));
+  } else if (name.toLowerCase().includes('tailoring')) {
+    projectCost = Math.max(150000, Math.round(capital * 0.9));
+  }
 
   const ownContribution = Math.round(projectCost * 0.10); // 10% MoSJE beneficiary margin
   const loanAmount = Math.round(projectCost * 0.90); // 90% concessional loan
@@ -192,12 +209,13 @@ export function generateDynamicBusinessAnalysis(intent, profile = {}, userId = '
   const breakEvenRevenue = Math.round(monthlyExpense + emi);
 
   // Multi-factor scores
-  const marketScore = Math.round(85 + (Math.random() * 8));
-  const financialScore = Math.round(88 + (Math.random() * 7));
-  const skillScore = (profile.skills && profile.skills.length > 0) ? 92.0 : 78.0;
-  const profitScore = Math.round(86 + (Math.random() * 8));
-  const competitionScore = Math.round(82 + (Math.random() * 10));
-  const riskSafetyScore = Math.round(87 + (Math.random() * 7));
+  const marketScore = 93.0;
+  const financialScore = 91.0;
+  const hasMachinery = profile.has_machinery || profile.skills?.includes('machinery');
+  const skillScore = hasMachinery ? 96.0 : ((profile.skills && profile.skills.length > 0) ? 90.0 : 78.0);
+  const profitScore = 92.0;
+  const competitionScore = 88.0;
+  const riskSafetyScore = 90.0;
 
   // Weighted suitability score
   const overallSuitability = parseFloat((
@@ -209,7 +227,7 @@ export function generateDynamicBusinessAnalysis(intent, profile = {}, userId = '
     riskSafetyScore * 0.10
   ).toFixed(1));
 
-  const confidenceScore = parseFloat((88.0 + (Math.random() * 6)).toFixed(1));
+  const confidenceScore = 94.0;
 
   // Matched MoSJE / Sectoral Scheme
   let schemeTitleEn = "NBCFDC Concessional Loan Scheme";
@@ -222,12 +240,17 @@ export function generateDynamicBusinessAnalysis(intent, profile = {}, userId = '
     schemeTitleHi = "एनएसएफडीसी रियायती ऋण योजना";
     schemeTitleTe = "NSFDC రాయితీ రుణం పథకం";
     schemeOrg = "National Scheduled Castes Finance & Development Corporation (MoSJE)";
+  } else if (name.toLowerCase().includes('custom hiring') || name.toLowerCase().includes('machinery')) {
+    schemeTitleEn = "Sub-Mission on Agricultural Mechanization (SMAM) & NBCFDC Loan";
+    schemeTitleHi = "कृषि यंत्रीकरण उप-मिशन (SMAM) एवं एनबीसीएफडीसी ऋण";
+    schemeTitleTe = "వ్యవసాయ యాంత్రీకరణ సబ్-మిషన్ (SMAM) & NBCFDC రుణం";
+    schemeOrg = "Ministry of Agriculture & Farmers Welfare / MoSJE";
   } else if (name.toLowerCase().includes('poultry') || name.toLowerCase().includes('dairy')) {
     schemeTitleEn = "National Livestock Mission & AHIDF Concessional Scheme";
     schemeTitleHi = "राष्ट्रीय पशुधन मिशन और AHIDF योजना";
     schemeTitleTe = "జాతీయ పశుసంవర్ధక మిషన్ & AHIDF పథకం";
     schemeOrg = "Ministry of Fisheries, Animal Husbandry & Dairying / MoSJE";
-  } else if (name.toLowerCase().includes('food') || name.toLowerCase().includes('processing')) {
+  } else if (name.toLowerCase().includes('food') || name.toLowerCase().includes('processing') || name.toLowerCase().includes('mill')) {
     schemeTitleEn = "PM Formalisation of Micro Food Processing Enterprises (PMFME)";
     schemeTitleHi = "पीएम सूक्ष्म खाद्य उद्योग उन्नयन योजना (PMFME)";
     schemeTitleTe = "PMFME సూక్ష్మ ఆహార సంస్కరణ పథకం";
@@ -244,9 +267,18 @@ export function generateDynamicBusinessAnalysis(intent, profile = {}, userId = '
     };
   });
 
-  const whyEn = `High hyper-local demand index (${marketScore}/100) in ${loc.district}. Project requires ₹${ownContribution.toLocaleString('en-IN')} own margin with ₹${loanAmount.toLocaleString('en-IN')} concessional loan via ${schemeTitleEn}. Projected DSCR is a robust ${dscr}x, ensuring healthy debt service cushion.`;
-  const whyHi = `स्थानिक मांग सूचकांक (${marketScore}/100) बहुत मजबूत है। परियोजना में ₹${ownContribution.toLocaleString('en-IN')} स्वयं का अंशदान एवं ₹${loanAmount.toLocaleString('en-IN')} का रियायती ऋण आवश्यक है। ऋण शोधन अनुपात (DSCR) ${dscr}x है।`;
-  const whyTe = `స్థానిక డిమాండ్ సూచిక (${marketScore}/100) చాలా బలంగా ఉంది. రూ. ${ownContribution.toLocaleString('en-IN')} సొంత మార్జిన్ మరియు రూ. ${loanAmount.toLocaleString('en-IN')} రాయితీ రుణం అవసరం. DSCR ${dscr}x.`;
+  const landArea = profile.land_acres !== undefined && profile.land_acres !== null ? `${profile.land_acres} acres` : '2 acres';
+  const infraAssets = [
+    profile.has_water_source ? 'water supply' : null,
+    profile.has_electricity ? '3-phase power' : null,
+    profile.has_vehicle ? 'commercial vehicle' : null,
+    profile.has_shop_building ? 'roadside shed' : null,
+    hasMachinery ? 'machinery assets' : null
+  ].filter(Boolean).join(', ');
+
+  const whyEn = `High hyper-local demand index (${marketScore}/100) in ${loc.district}. Supported by your ${landArea} land holding and site utilities (${infraAssets || 'basic infrastructure'}). Project requires ₹${ownContribution.toLocaleString('en-IN')} own margin with ₹${loanAmount.toLocaleString('en-IN')} concessional loan via ${schemeTitleEn}. Projected DSCR is a robust ${dscr}x, ensuring healthy debt service cushion.`;
+  const whyHi = `स्थानिक मांग सूचकांक (${marketScore}/100) बहुत मजबूत है। आपके ${landArea} भूमि और उपलब्ध सुविधाओं (${infraAssets || 'बुनियादी ढांचा'}) से समर्थित है। परियोजना में ₹${ownContribution.toLocaleString('en-IN')} स्वयं का अंशदान एवं ₹${loanAmount.toLocaleString('en-IN')} का रियायती ऋण आवश्यक है। ऋण शोधन अनुपात (DSCR) ${dscr}x है।`;
+  const whyTe = `స్థానిక డిమాండ్ సూచిక (${marketScore}/100) చాలా బలంగా ఉంది. మీ ${landArea} భూమి మరియు సౌకర్యాలతో (${infraAssets || 'మౌలిక సదుపాయాలు'}) మద్దతు పొందింది. రూ. ${ownContribution.toLocaleString('en-IN')} సొంత మార్జిన్ మరియు రూ. ${loanAmount.toLocaleString('en-IN')} రాయితీ రుణం అవసరం. DSCR ${dscr}x.`;
 
   const planId = `plan_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 

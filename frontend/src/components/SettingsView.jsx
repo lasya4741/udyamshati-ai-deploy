@@ -232,7 +232,7 @@ export default function SettingsView({
                   type={showOldPass ? 'text' : 'password'}
                   value={oldPassword}
                   onChange={(e) => setOldPassword(e.target.value)}
-                  placeholder="Enter current password (e.g. kisan123)"
+                  placeholder="Enter current password"
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-sm text-stone-900 font-medium focus:bg-white focus:outline-none focus:border-[#0F3D2E] focus:ring-2 focus:ring-[#0F3D2E]/10 pr-11 transition"
                   required
                 />

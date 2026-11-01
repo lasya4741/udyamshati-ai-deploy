@@ -16,7 +16,7 @@ import {
 import { translations } from '../locales/translations';
 import { useSaarthi } from '../context/SaarthiContext';
 
-export default function RecommendationsView({ lang = 'en', setActiveTab }) {
+export default function RecommendationsView({ recommendations, profile, lang = 'en', setActiveTab }) {
   const t = translations[lang] || translations.en;
   
   const { 
@@ -29,7 +29,7 @@ export default function RecommendationsView({ lang = 'en', setActiveTab }) {
   } = useSaarthi();
 
   const activePlan = getActivePlan();
-  const activeRec = activePlan?.rawRecommendation;
+  const activeRec = activePlan?.rawRecommendation || recommendations?.top_recommendation;
 
   const hasPersonalPlans = personalPlans.length > 0;
   const isPersonalActive = activePlan?.type === 'personal';
@@ -160,10 +160,12 @@ export default function RecommendationsView({ lang = 'en', setActiveTab }) {
                 <p className="text-xs text-stone-600 mt-1 max-w-2xl font-medium">
                   {lang === 'hi' ? (activeRec.description_hi || activeRec.description) : (lang === 'te' ? (activeRec.description_te || activeRec.description) : activeRec.description)}
                 </p>
-                <div className="mt-2 text-xs text-emerald-800 font-bold flex items-center space-x-1">
-                  <span>📍 {activePlan.location?.village || 'Local Area'}, {activePlan.location?.district || ''}</span>
-                  <span className="mx-1.5">•</span>
-                  <span>Available Capital: ₹{(activePlan.capital || 300000).toLocaleString('en-IN')}</span>
+                <div className="mt-2 text-xs text-emerald-800 font-bold flex flex-wrap items-center gap-y-1">
+                  <span>📍 {activePlan?.location?.village || (isPersonalActive ? profile?.village_name : null) || 'Local Area'}, {activePlan?.location?.district || (isPersonalActive ? profile?.district : null) || ''}{activePlan?.location?.state || (isPersonalActive ? profile?.state : null) ? `, ${activePlan?.location?.state || profile?.state}` : ''}</span>
+                  <span className="mx-2 hidden sm:inline">•</span>
+                  <span>Available Capital: ₹{((isPersonalActive ? profile?.available_capital : activePlan?.capital) ?? activePlan?.capital ?? profile?.available_capital ?? 0).toLocaleString('en-IN')}</span>
+                  <span className="mx-2 hidden sm:inline">•</span>
+                  <span className="text-stone-700">Project Cost: ₹{(fin.project_cost || activePlan?.requiredInvestment || 0).toLocaleString('en-IN')}</span>
                 </div>
               </div>
 

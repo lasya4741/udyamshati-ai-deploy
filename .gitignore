@@ -6,6 +6,7 @@ frontend/node_modules/
 # Python virtual environment & cache
 venv/
 env/
+ai-service/venv/
 __pycache__/
 */__pycache__/
 */*/__pycache__/
@@ -18,12 +19,30 @@ dist/
 build/
 frontend/dist/
 
-# Environment variables & secrets
+# Environment variables & secrets (recursively ignore all real .env files, allow .env.example)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+*.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# Sensitive credentials, certificates, & private keys
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+*.id_rsa
+id_rsa*
+
+# Backup JSON dumps & temporary files
+backend/src/scripts/*.json
+*.dump
+*.bak
+*.tmp
 
 # Logs
 *.log
@@ -43,3 +62,4 @@ desktop.ini
 *.ntvs*
 *.njsproj
 *.sln
+

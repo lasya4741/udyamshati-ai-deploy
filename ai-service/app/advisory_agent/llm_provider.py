@@ -1,29 +1,49 @@
 import os
 import json
-import requests
+import urllib.request
+import urllib.error
 from typing import Dict, Any, List, Optional
 
 class LLMProvider:
     """
     Clean LLM Provider abstraction for UdyamSaarthi Conversational Business Advisor.
     Supports Gemini API via environment variable (GEMINI_API_KEY or GOOGLE_API_KEY).
-    If no key is configured, gracefully degrades to deterministic NLU/rules.
+    If no key is configured, quota is exceeded, or network fails,
+    it gracefully degrades to deterministic NLU rules.
     """
 
+    SUPPORTED_FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]
+
     def __init__(self):
-        self.api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        self.model_name = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
-        self.endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+        # Auto-load ai-service/.env if present and not in os.environ
+        env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            os.environ.setdefault(k.strip(), v.strip().strip('"\''))
+            except Exception:
+                pass
+
+        raw_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+        self.api_key = raw_key.strip().strip("'\"") if raw_key else ""
+
+        raw_model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+        cleaned_model = raw_model.strip().strip("'\"").replace("models/", "") if raw_model else "gemini-3.5-flash-lite"
+        self.model_name = cleaned_model if cleaned_model else "gemini-3.5-flash-lite"
 
     def is_available(self) -> bool:
-        return bool(self.api_key and self.api_key.strip())
+        return bool(self.api_key and len(self.api_key) > 10)
 
-    def _call_gemini_api(self, prompt: str, system_instruction: str = "") -> Optional[str]:
+    def _call_gemini_api(self, prompt: str, system_instruction: str = "", model_override: Optional[str] = None) -> Optional[str]:
         if not self.is_available():
             return None
 
-        headers = {"Content-Type": "application/json"}
-        params = {"key": self.api_key}
+        model_to_use = model_override or self.model_name
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={self.api_key}"
 
         payload = {
             "contents": [{
@@ -36,17 +56,40 @@ class LLMProvider:
                 "parts": [{"text": system_instruction}]
             }
 
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(endpoint, data=data_bytes, headers={"Content-Type": "application/json"})
+
         try:
-            resp = requests.post(self.endpoint, headers=headers, params=params, json=payload, timeout=8)
-            if resp.status_code == 200:
-                data = resp.json()
-                candidates = data.get("candidates", [])
-                if candidates and "content" in candidates[0]:
-                    parts = candidates[0]["content"].get("parts", [])
-                    if parts and "text" in parts[0]:
-                        return parts[0]["text"]
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    candidates = data.get("candidates", [])
+                    if candidates and "content" in candidates[0]:
+                        parts = candidates[0]["content"].get("parts", [])
+                        if parts and "text" in parts[0]:
+                            return parts[0]["text"]
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                # If model is not found, try fallback models
+                if not model_override:
+                    for fb in self.SUPPORTED_FALLBACK_MODELS:
+                        if fb != model_to_use:
+                            print(f"[Gemini API Notice] Model '{model_to_use}' returned 404. Trying fallback '{fb}'...")
+                            fb_res = self._call_gemini_api(prompt, system_instruction, model_override=fb)
+                            if fb_res:
+                                self.model_name = fb
+                                return fb_res
+                print(f"[Gemini API Warning] HTTP 404 Not Found for model '{model_to_use}'.")
+            elif e.code == 400:
+                print(f"[Gemini API Warning] HTTP 400 Bad Request. Check request format or key.")
+            elif e.code == 403:
+                print(f"[Gemini API Warning] HTTP 403 Forbidden. Check API permissions.")
+            elif e.code == 429:
+                print(f"[Gemini API Warning] HTTP 429 Quota Exceeded. Fallback to deterministic rules.")
+            else:
+                print(f"[Gemini API Warning] HTTP {e.code}. Fallback to deterministic rules.")
         except Exception as e:
-            print(f"LLMProvider API Warning: {e}")
+            print(f"[Gemini API Network/Timeout Notice]: {e}. Fallback to deterministic rules.")
 
         return None
 

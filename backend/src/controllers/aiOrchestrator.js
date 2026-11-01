@@ -71,8 +71,26 @@ exports.handleChat = async (req, res) => {
 // 2. Full Decision Recommendations
 exports.getRecommendations = async (req, res) => {
   try {
-    const profile = req.body;
+    const profile = req.body || {};
     const result = await callAI('/api/recommendations', profile);
+
+    // Safeguard: Ensure authoritative capital and location persist into top recommendation
+    if (result && result.top_recommendation) {
+      if (profile.available_capital !== undefined && profile.available_capital !== null && !isNaN(parseFloat(profile.available_capital))) {
+        result.top_recommendation.capital = parseFloat(profile.available_capital);
+        result.capital = parseFloat(profile.available_capital);
+      }
+      if (profile.village_name || profile.district || profile.state) {
+        result.top_recommendation.location = {
+          village: profile.village_name || '',
+          district: profile.district || '',
+          state: profile.state || '',
+          latitude: profile.latitude,
+          longitude: profile.longitude
+        };
+      }
+    }
+
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

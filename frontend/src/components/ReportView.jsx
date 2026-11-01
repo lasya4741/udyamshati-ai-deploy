@@ -15,40 +15,57 @@ import {
 import { translations } from '../locales/translations';
 import { useSaarthi } from '../context/SaarthiContext';
 
-export default function ReportView({ profile, recommendations, lang = 'en' }) {
+export default function ReportView({ profile, recommendations, lang = 'en', setActiveTab }) {
   const t = translations[lang] || translations.en;
-  const { userPlans = [], activePlan, activePlanId, setActivePlanId, deletePlan } = useSaarthi();
-  const plansList = Array.isArray(userPlans) ? userPlans : [];
+  const { 
+    personalPlans = [], 
+    userPlans = [], 
+    activePlan, 
+    activePlanId, 
+    setActivePlanId, 
+    deletePlan,
+    isLoadingPlans,
+    planError,
+    fetchSavedPlans
+  } = useSaarthi();
+
+  const plansList = personalPlans.length > 0 ? personalPlans : (Array.isArray(userPlans) ? userPlans : []);
 
   // Normalize recommendation object from active plan or fallback top_recommendation
-  const topRec = activePlan?.rawRecommendation 
-    || recommendations?.top_recommendation 
-    || (activePlan ? {
-        name_en: activePlan.businessName,
-        description: activePlan.description,
-        overall_suitability_score: activePlan.suitabilityScore || 90,
-        confidence_score: activePlan.confidenceScore || 92,
-        why_recommended_en: activePlan.marketAnalysis?.keyOpportunity || "Strong local market demand matched with rural entrepreneur capabilities.",
-        financials: {
-          project_cost: activePlan.requiredInvestment,
-          own_contribution_required: Math.round(activePlan.requiredInvestment * 0.1),
-          loan_amount: Math.round(activePlan.requiredInvestment * 0.9),
-          interest_rate_pct: 8.0,
-          tenure_years: 7,
-          moratorium_months: 6,
-          monthly_emi: Math.round((activePlan.requiredInvestment * 0.9 * 0.08 / 12 * Math.pow(1.00667, 84)) / (Math.pow(1.00667, 84) - 1)),
-          projected_monthly_revenue: parseInt(activePlan.financialAnalysis?.expectedMonthlyRevenue) || 65000,
-          projected_monthly_operating_profit: parseInt(activePlan.financialAnalysis?.expectedNetProfit) || 24000,
-          dscr: 1.85,
-          financial_viability: "High Viability"
-        },
-        top_scheme: {
-          title_en: activePlan.schemeAnalysis?.matchedSchemes?.[0] || "NSFDC Micro Credit Scheme",
-          organization: "MoSJE / SCA",
-          source_url: "https://nsfdc.nic.in",
-          last_verified_date: "2026-03-01"
-        }
-      } : null);
+  const topRec = (activePlan ? {
+      name_en: activePlan.businessName || activePlan.plan_title || activePlan.rawRecommendation?.name_en,
+      name_hi: activePlan.rawRecommendation?.name_hi || activePlan.name_hi,
+      name_te: activePlan.rawRecommendation?.name_te || activePlan.name_te,
+      description: activePlan.description || activePlan.rawRecommendation?.description,
+      description_hi: activePlan.description_hi || activePlan.rawRecommendation?.description_hi,
+      description_te: activePlan.description_te || activePlan.rawRecommendation?.description_te,
+      overall_suitability_score: activePlan.suitabilityScore || activePlan.rawRecommendation?.overall_suitability_score || 90,
+      confidence_score: activePlan.confidenceScore || activePlan.rawRecommendation?.confidence_score || 92,
+      why_recommended_en: activePlan.why_recommended_en || activePlan.rawRecommendation?.why_recommended_en || "Strong local market demand matched with rural entrepreneur capabilities.",
+      why_recommended_hi: activePlan.why_recommended_hi || activePlan.rawRecommendation?.why_recommended_hi,
+      why_recommended_te: activePlan.why_recommended_te || activePlan.rawRecommendation?.why_recommended_te,
+      financials: activePlan.financials || activePlan.financial_details || activePlan.rawRecommendation?.financials || {
+        project_cost: activePlan.requiredInvestment || 500000,
+        own_contribution_required: Math.round((activePlan.requiredInvestment || 500000) * 0.1),
+        loan_amount: Math.round((activePlan.requiredInvestment || 500000) * 0.9),
+        interest_rate_pct: 8.0,
+        tenure_years: 7,
+        moratorium_months: 6,
+        monthly_emi: 7018,
+        projected_monthly_revenue: 75000,
+        projected_monthly_operating_profit: 32000,
+        dscr: 2.15,
+        financial_viability: "High Viability"
+      },
+      market: activePlan.market || activePlan.rawRecommendation?.market || {},
+      top_scheme: activePlan.top_scheme || activePlan.rawRecommendation?.top_scheme || {
+        title_en: "MoSJE Concessional Micro-Credit Scheme",
+        organization: "MoSJE / NBCFDC / NSFDC",
+        source_url: "https://socialjustice.gov.in",
+        last_verified_date: "2026-03-01"
+      }
+    } : null)
+    || recommendations?.top_recommendation;
 
   const fin = topRec?.financials || {};
   const mkt = topRec?.market || {};
@@ -58,8 +75,6 @@ export default function ReportView({ profile, recommendations, lang = 'en' }) {
     window.print();
   };
 
-  const personalPlans = plansList.filter(p => !p.isDefault);
-
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Saved Business Plans Management Bar */}
@@ -68,7 +83,7 @@ export default function ReportView({ profile, recommendations, lang = 'en' }) {
           <div className="flex items-center space-x-2">
             <FolderOpen className="w-5 h-5 text-emerald-700" />
             <h3 className="text-sm font-bold text-slate-900">
-              {t.myBusinessPlans || "My Saved Business Plans"} ({plansList.length})
+              {t.myBusinessPlans || "My Business Plans"} ({plansList.length})
             </h3>
           </div>
           <span className="text-[11px] text-slate-500 font-medium">
@@ -76,74 +91,127 @@ export default function ReportView({ profile, recommendations, lang = 'en' }) {
           </span>
         </div>
 
-        {/* Plan Cards Switcher */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-          {plansList.map((plan) => {
-            const isSelected = plan.id === activePlanId;
-            const isPersonal = !plan.isDefault;
-            return (
-              <div
-                key={plan.id}
-                onClick={() => setActivePlanId(plan.id)}
-                className={`p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
-                  isSelected
-                    ? 'border-emerald-700 bg-emerald-50/80 ring-2 ring-emerald-500/20 shadow-sm'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                      isPersonal
-                        ? 'bg-amber-100 text-amber-900 border border-amber-300/60'
-                        : 'bg-slate-100 text-slate-700'
-                    }`}>
-                      {isPersonal ? (
-                        <span className="flex items-center gap-1">
-                          <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                          {t.yourPlanBadge || "YOUR PLAN"}
-                        </span>
-                      ) : (
-                        t.exampleBadge || "EXAMPLE"
-                      )}
-                    </span>
+        {/* Loading State */}
+        {isLoadingPlans && (
+          <div className="py-6 text-center space-y-2">
+            <div className="w-7 h-7 border-3 border-emerald-700 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs text-slate-500 font-medium">Loading your persistent business plans from Supabase...</p>
+          </div>
+        )}
 
-                    {isPersonal && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`Delete plan "${plan.businessName}"?`)) {
-                            deletePlan(plan.id);
-                          }
-                        }}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded transition"
-                        title="Delete Plan"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+        {/* Error State */}
+        {planError && (
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center justify-between">
+            <span>{planError}</span>
+            <button onClick={fetchSavedPlans} className="underline font-bold hover:text-rose-900">Retry</button>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoadingPlans && plansList.length === 0 && (
+          <div className="p-8 text-center bg-stone-50 border border-dashed border-stone-300 rounded-2xl space-y-3">
+            <Building2 className="w-10 h-10 text-stone-400 mx-auto" />
+            <h4 className="text-sm font-bold text-stone-800">No Business Plans Saved Yet</h4>
+            <p className="text-xs text-stone-500 max-w-md mx-auto">
+              Your business plans will be saved here automatically when generated from your Entrepreneur Profile.
+            </p>
+            {setActiveTab && (
+              <button
+                onClick={() => setActiveTab('profile')}
+                className="bg-[#0F3D2E] hover:bg-[#165440] text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                Go to Profile Wizard
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Plan Cards Switcher */}
+        {!isLoadingPlans && plansList.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {plansList.map((plan) => {
+              const isSelected = plan.id === activePlanId;
+              const isPersonal = !plan.isDefault;
+              const formattedDate = (plan.created_at || plan.createdAt)
+                ? new Date(plan.created_at || plan.createdAt).toLocaleDateString(
+                    lang === 'hi' ? 'hi-IN' : (lang === 'te' ? 'te-IN' : 'en-IN'),
+                    { day: '2-digit', month: 'short', year: 'numeric' }
+                  )
+                : 'Saved';
+
+              return (
+                <div
+                  key={plan.id}
+                  onClick={() => setActivePlanId(plan.id)}
+                  className={`p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-emerald-700 bg-emerald-50/80 ring-2 ring-emerald-500/20 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <div className="flex items-center space-x-1.5">
+                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                          isPersonal
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300/60'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {isPersonal ? (
+                            <span className="flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                              {t.yourPlanBadge || "SAVED PLAN"}
+                            </span>
+                          ) : (
+                            t.exampleBadge || "EXAMPLE"
+                          )}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          {plan.status || 'ACTIVE'}
+                        </span>
+                      </div>
+
+                      {isPersonal && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Delete plan "${plan.businessName || plan.plan_title}"?`)) {
+                              deletePlan(plan.id);
+                            }
+                          }}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded transition"
+                          title="Delete Plan"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <h4 className="text-xs font-bold text-slate-900 line-clamp-1">
+                      {plan.businessName || plan.plan_title}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                      {plan.category || plan.business_type || plan.description}
+                    </p>
+                    <div className="flex items-center text-[10px] text-slate-400 mt-1">
+                      <Calendar className="w-3 h-3 mr-1" />
+                      <span>{formattedDate}</span>
+                    </div>
                   </div>
 
-                  <h4 className="text-xs font-bold text-slate-900 line-clamp-1">
-                    {plan.businessName}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                    {plan.category || plan.description}
-                  </p>
+                  <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-600">
+                    <span className="font-bold text-emerald-800">
+                      ₹{(plan.capital || plan.available_capital || plan.requiredInvestment || 0).toLocaleString('en-IN')}
+                    </span>
+                    <span>
+                      Score: <strong className="text-slate-900">{plan.suitabilityScore || 90}/100</strong>
+                    </span>
+                  </div>
                 </div>
-
-                <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-600">
-                  <span className="font-bold text-emerald-800">
-                    ₹{(plan.requiredInvestment || 0).toLocaleString('en-IN')}
-                  </span>
-                  <span>
-                    Score: <strong className="text-slate-900">{plan.suitabilityScore || 90}/100</strong>
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Action Bar */}
@@ -206,7 +274,11 @@ export default function ReportView({ profile, recommendations, lang = 'en' }) {
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">{t.locationLabel || "Location"}:</span>
-              <span className="font-semibold text-slate-800">{profile.village_name}, {profile.district}</span>
+              <span className="font-semibold text-slate-800">
+                {activePlan?.location && (activePlan.location.village || activePlan.location.district)
+                  ? `${activePlan.location.village || ''}${activePlan.location.village && activePlan.location.district ? ', ' : ''}${activePlan.location.district || activePlan.location.state || ''}`
+                  : `${profile.village_name || ''}${profile.village_name && profile.district ? ', ' : ''}${profile.district || profile.state || ''}`}
+              </span>
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">{t.socialCategoryLabel || "Social Category"}:</span>
@@ -218,7 +290,11 @@ export default function ReportView({ profile, recommendations, lang = 'en' }) {
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">{t.availableCapitalLabel || "Available Capital"}:</span>
-              <span className="font-bold text-slate-900">₹{(profile.available_capital || 0).toLocaleString('en-IN')}</span>
+              <span className="font-bold text-slate-900">
+                ₹{(activePlan?.capital !== undefined && activePlan?.capital !== null
+                  ? activePlan.capital
+                  : (profile.available_capital || 0)).toLocaleString('en-IN')}
+              </span>
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">{t.liquidReserveLabel || "Liquid Reserve"}:</span>

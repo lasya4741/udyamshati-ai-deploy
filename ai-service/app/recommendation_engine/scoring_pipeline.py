@@ -6,6 +6,37 @@ from app.finance_engine.structuring_service import FinanceEngine
 from app.scheme_engine.rule_evaluator import SchemeRuleEngine
 from app.risk_engine.risk_analyzer import RiskEngine
 
+CATEGORY_INTENT_KEYWORDS = {
+    "DAIRY_FARMING": ["dairy", "milk", "cow", "buffalo", "cattle", "दुग्ध", "डेयरी", "పాడి"],
+    "AGRI_EQUIPMENT_RENTAL": ["custom hiring", "hiring centre", "hiring center", "tractor rental", "machinery rental", "equipment rental", "farm machinery rental", "कस्टम हायरिंग"],
+    "KIRANA_DAILY_NEEDS": ["kirana", "provisions", "grocery", "daily needs", "general store", "daily store", "किराना"],
+    "MUSHROOM_FARMING": ["mushroom", "मशरूम", "పుట్టగొడుగు"],
+    "FOOD_PROCESSING_MILL": ["flour mill", "spices mill", "oil mill", "oil expeller", "grain mill", "expeller", "pulverizer", "आटा मिल", "मसाला मिल", "तेल मिल"],
+    "POULTRY_BROILER": ["poultry", "broiler", "chicken", "पोल्ट्री", "मुर्गी"],
+    "VEGETABLE_FARMING": ["polyhouse", "greenhouse", "precision vegetable", "पॉलीहाउस"],
+    "GOAT_REARING": ["goat", "bakri", "बकरी पालन"],
+    "SOLAR_ENERGY": ["solar", "सौर"],
+    "GARMENT_TAILORING": ["tailoring", "garment", "boutique", "सिलाई"]
+}
+
+def matches_business_intent(user_interest: str, category_code: str, biz_name: str = "") -> bool:
+    if not user_interest:
+        return False
+    ui = user_interest.lower().strip()
+    code = category_code.upper().strip()
+    
+    keywords = CATEGORY_INTENT_KEYWORDS.get(code, [])
+    if any(k in ui for k in keywords):
+        return True
+    
+    stopwords = {"farming", "farm", "commercial", "unit", "rural", "centre", "center", "store", "mill"}
+    ui_words = [w.strip("(),.") for w in ui.split() if len(w.strip("(),.")) >= 3 and w.strip("(),.") not in stopwords]
+    name_words = [w.strip("(),.") for w in biz_name.lower().split() if len(w.strip("(),.")) >= 3 and w.strip("(),.") not in stopwords]
+    if any(w in name_words for w in ui_words):
+        return True
+
+    return False
+
 class RecommendationEngine:
     def __init__(self):
         self._load_catalog()
@@ -104,8 +135,13 @@ class RecommendationEngine:
             else:
                 skill_score = 55.0
 
-            # Bonus if entrepreneur specifically expressed interest
-            if user_interest and (user_interest in code.lower() or any(w in user_interest for w in biz.get("name_en", "").lower().split())):
+            # Direct business interest matching
+            is_direct_interest_match = matches_business_intent(user_interest, code, biz.get("name_en", ""))
+            if is_direct_interest_match:
+                skill_score = min(100.0, skill_score + 15.0)
+
+            # Asset & land readiness bonus (machinery, power, land)
+            if code == "AGRI_EQUIPMENT_RENTAL" and (bool(profile.get("has_machinery")) or "machinery" in user_skills):
                 skill_score = min(100.0, skill_score + 10.0)
 
             # 4. Profitability Score
@@ -143,10 +179,11 @@ class RecommendationEngine:
                 w["competition"] * competition_score +
                 w["risk_safety"] * risk_safety_score
             )
+            if is_direct_interest_match:
+                final_score = min(100.0, final_score + 12.0)
             final_score = round(min(100.0, max(20.0, final_score)), 1)
 
             # Data Confidence Score:
-            # Dependent on market confidence, profile completeness, and scheme verification
             market_conf = market_res["data_confidence_pct"]
             confidence = round(market_conf * 0.70 + 30.0 * (1.0 if top_scheme and top_scheme.get("is_eligible") else 0.8), 1)
 
@@ -173,6 +210,7 @@ class RecommendationEngine:
                 "description": biz.get("description"),
                 "overall_suitability_score": final_score,
                 "confidence_score": confidence,
+                "is_direct_interest_match": is_direct_interest_match,
                 "sub_scores": {
                     "market_opportunity": market_score,
                     "financial_feasibility": financial_score,
@@ -188,11 +226,30 @@ class RecommendationEngine:
                 "matched_schemes": matched_schemes[:3],
                 "top_scheme": top_scheme,
                 "why_recommended_en": why_en,
-                "why_recommended_hi": why_hi
+                "why_recommended_hi": why_hi,
+                "location": {
+                    "village": profile.get("village_name") or "",
+                    "district": profile.get("district") or "",
+                    "state": profile.get("state") or "",
+                    "latitude": lat,
+                    "longitude": lon
+                },
+                "capital": capital
             })
 
-        # Sort by overall score descending
-        ranked_results.sort(key=lambda x: x["overall_suitability_score"], reverse=True)
+        # Multi-factor ranking:
+        # Explicit user-selected business intent takes priority over inferred recommendations.
+        # If user explicitly specified a business interest, matching candidates are prioritized first.
+        if user_interest:
+            intent_matches = [r for r in ranked_results if r.get("is_direct_interest_match")]
+            other_candidates = [r for r in ranked_results if not r.get("is_direct_interest_match")]
+            
+            intent_matches.sort(key=lambda x: x["overall_suitability_score"], reverse=True)
+            other_candidates.sort(key=lambda x: x["overall_suitability_score"], reverse=True)
+            
+            ranked_results = intent_matches + other_candidates
+        else:
+            ranked_results.sort(key=lambda x: x["overall_suitability_score"], reverse=True)
 
         return {
             "total_candidates_analyzed": len(self.catalog),

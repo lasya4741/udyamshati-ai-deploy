@@ -188,7 +188,7 @@ export default function App() {
     }
   }, [profile?.state, langPref.mode]);
 
-  // Synchronize authenticated user identity into profile state
+  // Synchronize authenticated user identity and load saved entrepreneur profile from PostgreSQL
   useEffect(() => {
     if (auth && auth.isAuthenticated) {
       const userName = auth.user?.name || auth.name;
@@ -200,11 +200,28 @@ export default function App() {
           phone: userPhone || prev.phone,
         }));
       }
+
+      // Fetch saved profile from PostgreSQL backend
+      const loadSavedProfile = async () => {
+        try {
+          const res = await axios.get('/api/profile');
+          if (res.data && (res.data.id || res.data.hasProfile)) {
+            setProfile((prev) => ({
+              ...prev,
+              ...res.data
+            }));
+            runDecisionAdvisory(res.data);
+          }
+        } catch (err) {
+          console.warn("Unable to fetch saved profile from backend:", err);
+        }
+      };
+      loadSavedProfile();
     }
   }, [auth]);
 
   // Handle Login Success
-  const handleLoginSuccess = (session) => {
+  const handleLoginSuccess = async (session) => {
     authService.saveSession(session);
     setAuth(session);
     setActiveTab('home');
@@ -217,6 +234,17 @@ export default function App() {
         phone: userPhone || prev.phone,
       }));
     }
+    // Immediately load persistent profile from database
+    try {
+      const res = await axios.get('/api/profile');
+      if (res.data && (res.data.id || res.data.hasProfile)) {
+        setProfile((prev) => ({
+          ...prev,
+          ...res.data
+        }));
+        runDecisionAdvisory(res.data);
+      }
+    } catch (e) {}
   };
 
   // Handle Logout
@@ -247,9 +275,19 @@ export default function App() {
     }
   }, [auth]);
 
-  // When speech or wizard updates the profile, instantly save & re-evaluate
-  const handleProfileUpdate = (updatedProfile) => {
+  // When speech or wizard updates the profile, save to PostgreSQL & re-evaluate
+  const handleProfileUpdate = async (updatedProfile) => {
     setProfile(updatedProfile);
+    try {
+      const res = await axios.post('/api/profile', updatedProfile);
+      if (res.data && res.data.profile) {
+        setProfile((prev) => ({ ...prev, ...res.data.profile }));
+        runDecisionAdvisory(res.data.profile);
+        return;
+      }
+    } catch (e) {
+      console.warn("Profile update backend sync notice:", e);
+    }
     runDecisionAdvisory(updatedProfile);
   };
 
@@ -273,6 +311,7 @@ export default function App() {
         profile={profile}
         onProfileUpdate={handleProfileUpdate}
         language={lang}
+        recommendations={recommendations}
       >
       <div className="min-h-screen bg-[#FCFBF7] text-stone-800 flex font-sans antialiased">
         {/* 1. Left Fixed Sidebar */}
@@ -328,8 +367,17 @@ export default function App() {
                   <ProfileWizard
                     profile={profile}
                     setProfile={setProfile}
-                    onRunAdvisory={() => {
-                      runDecisionAdvisory(profile);
+                    onRunAdvisory={async (wizardProfile) => {
+                      const profToUse = wizardProfile || profile;
+                      try {
+                        const res = await axios.post('/api/profile', profToUse);
+                        const authProfile = (res.data && res.data.profile) ? res.data.profile : profToUse;
+                        setProfile((prev) => ({ ...prev, ...authProfile }));
+                        await runDecisionAdvisory(authProfile);
+                      } catch (err) {
+                        console.warn("Error persisting profile on advisory run:", err);
+                        await runDecisionAdvisory(profToUse);
+                      }
                       setActiveTab('recommendations');
                     }}
                     lang={lang}
@@ -339,6 +387,7 @@ export default function App() {
                 {activeTab === 'recommendations' && (
                   <RecommendationsView
                     recommendations={recommendations}
+                    profile={profile}
                     lang={lang}
                     setActiveTab={setActiveTab}
                   />

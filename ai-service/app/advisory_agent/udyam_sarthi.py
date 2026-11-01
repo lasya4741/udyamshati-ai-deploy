@@ -11,6 +11,7 @@ from app.recommendation_engine.scoring_pipeline import RecommendationEngine
 from app.simulation_engine.whatif_simulator import SimulationEngine
 from app.rag_engine.retriever import RAGRetriever
 from app.config import BUSINESS_CATALOG_PATH, SCHEMES_PATH
+from app.advisory_agent.llm_provider import LLMProvider
 
 class UdyamSarthiAgent:
     """
@@ -35,6 +36,7 @@ class UdyamSarthiAgent:
         self.recommendation_engine = RecommendationEngine()
         self.simulation_engine = SimulationEngine()
         self.rag_retriever = RAGRetriever()
+        self.llm_provider = LLMProvider()
 
         # Load business catalog
         try:
@@ -458,8 +460,30 @@ class UdyamSarthiAgent:
         detected_lang = self.detect_language(user_message, profile["language"])
         profile["language"] = detected_lang
 
-        # 3. Entity Extraction (Section 18 & 19)
+        # 3. Entity Extraction (Deterministic Regex Engine + Gemini LLM Enricher)
         extracted = self.extract_entities(user_message)
+        if hasattr(self, "llm_provider") and self.llm_provider.is_available():
+            try:
+                llm_parsed = self.llm_provider.understand_message(user_message, profile)
+                if isinstance(llm_parsed, dict) and "entities" in llm_parsed:
+                    llm_ents = llm_parsed.get("entities") or {}
+                    if not extracted.get("business_interest") and llm_ents.get("business_idea"):
+                        extracted["business_interest"] = llm_ents["business_idea"]
+                    if extracted.get("capital") is None and llm_ents.get("capital") is not None:
+                        try:
+                            extracted["capital"] = float(llm_ents["capital"])
+                        except (ValueError, TypeError):
+                            pass
+                    if extracted.get("land_acres") is None and llm_ents.get("land_acres") is not None:
+                        try:
+                            extracted["land_acres"] = float(llm_ents["land_acres"])
+                        except (ValueError, TypeError):
+                            pass
+                    if not extracted.get("skills") and llm_ents.get("skills"):
+                        extracted["skills"] = [str(s) for s in llm_ents["skills"]]
+            except Exception:
+                # LLM call or network issue: deterministic extraction continues seamlessly
+                pass
         if extracted.get("name"):
             profile["name"] = extracted["name"]
         if extracted.get("village"):

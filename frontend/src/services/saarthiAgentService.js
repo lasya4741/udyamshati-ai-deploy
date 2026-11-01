@@ -22,7 +22,8 @@ export function extractAllEntities(userMessage = '', currentDossier = {}, profil
     const match = text.match(pat);
     if (match && match[1]) {
       const nameCand = match[1].split(/\s+(?:from|in|and|with|want|\d)/)[0].trim();
-      if (nameCand.length >= 2 && !['business', 'poultry', 'dairy', 'a', 'the'].includes(nameCand.toLowerCase())) {
+      const forbiddenNames = ['business', 'poultry', 'dairy', 'a', 'the', 'lakh', 'lakhs', 'crore', 'thousand', 'rupee', 'rupees'];
+      if (nameCand.length >= 2 && !forbiddenNames.includes(nameCand.toLowerCase()) && !/\d|lakh|crore|thousand|rupee|rs|₹/i.test(nameCand)) {
         extracted.entrepreneurName = nameCand.charAt(0).toUpperCase() + nameCand.slice(1);
         break;
       }
@@ -30,9 +31,11 @@ export function extractAllEntities(userMessage = '', currentDossier = {}, profil
   }
 
   // Single word answer when asked for name (e.g. "Laxya")
-  if (!extracted.entrepreneurName && (!currentDossier.name || currentDossier.name === 'Entrepreneur') && text.split(/\s+/).length <= 2) {
+  const containsFinancialOrLandWord = /\d|lakh|crore|thousand|rupee|rs|₹|acre|acres|लाख|हजार|रुपये|ఎకరా|లక్ష/i.test(text);
+  if (!extracted.entrepreneurName && (!currentDossier.name || currentDossier.name === 'Entrepreneur') && text.split(/\s+/).length <= 2 && !containsFinancialOrLandWord) {
     const cleanWord = text.replace(/[^a-zA-Z\u0900-\u097F\u0C00-\u0C7F]/g, '').trim();
-    if (cleanWord.length >= 3 && !['hello', 'hi', 'namaste', 'namaskaram', 'yes', 'no', 'yeah'].includes(cleanWord.toLowerCase())) {
+    const forbidden = ['hello', 'hi', 'namaste', 'namaskaram', 'yes', 'no', 'yeah', 'lakh', 'lakhs', 'crore', 'thousand', 'rupees', 'acres', 'acre', 'poultry', 'dairy', 'business'];
+    if (cleanWord.length >= 3 && !forbidden.includes(cleanWord.toLowerCase())) {
       extracted.entrepreneurName = cleanWord.charAt(0).toUpperCase() + cleanWord.slice(1);
     }
   }

@@ -1,7 +1,7 @@
+const config = require('./src/config');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const config = require('./src/config');
 const apiRoutes = require('./src/routes/api');
 
 const app = express();
@@ -20,6 +20,11 @@ app.get('/health', (req, res) => {
     ai_service_url: config.AI_SERVICE_URL
   });
 });
+
+app.get('/health/db', (req, res) => {
+  res.redirect(307, '/api/health/db');
+});
+
 
 // Mount API routes
 app.use('/api', apiRoutes);

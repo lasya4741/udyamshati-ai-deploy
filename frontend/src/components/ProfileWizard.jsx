@@ -76,12 +76,19 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
 
   const handleSaveProfileDirect = async () => {
     try {
-      await axios.post('/api/profile', profile);
+      const res = await axios.post('/api/profile', profile);
+      if (res.data && res.data.profile) {
+        setProfile((prev) => ({ ...prev, ...res.data.profile }));
+      }
+      setProfileSaveNotice(true);
+      setTimeout(() => setProfileSaveNotice(false), 3000);
+      return res.data?.profile || profile;
     } catch (e) {
       console.warn("Direct profile sync:", e);
+      setProfileSaveNotice(true);
+      setTimeout(() => setProfileSaveNotice(false), 3000);
+      return profile;
     }
-    setProfileSaveNotice(true);
-    setTimeout(() => setProfileSaveNotice(false), 3000);
   };
 
   // Step-by-step conversational interview state
@@ -124,9 +131,8 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
       titleHi: 'गाँव व लोकेशन',
       titleTe: 'ప్రాంతం & GPS',
       questionEn: (p) => `Great ${p.name || 'friend'}! Which village or district are you located in? You can also tap '📍 Auto-Detect Live GPS' below.`,
-      questionHi: (p) => `बहुत बढ़िया ${p.name || ''} जी! आपका गाँव, शहर या जिला कौन सा है? आप नीचे दिए गए '📍 ऑटो-डिटेक्ट GPS' बटन से भी अपनी सटीक लोकेशन जोड़ सकते हैं।`,
-      questionTe: (p) => `చాలా బాగుంది ${p.name || ''}! మీ గ్రామం లేదా జిల్లా ఏమిటి? లేదా లైవ్ GPS ద్వారా లొకేషన్ ఎంచుకోండి.`,
-      presets: [
+       presets: [
+        { label: 'Brodipet (Guntur, AP)', lat: 16.3067, lon: 80.4365, v: 'Brodipet', d: 'Guntur', s: 'Andhra Pradesh' },
         { label: 'Pimpalgaon Baswant (Nashik, MH)', lat: 20.1706, lon: 73.9840, v: 'Pimpalgaon Baswant', d: 'Nashik', s: 'Maharashtra' },
         { label: 'Kankipadu (Krishna, AP)', lat: 16.4258, lon: 80.7712, v: 'Kankipadu', d: 'Krishna', s: 'Andhra Pradesh' },
         { label: 'Chaubeypur (Varanasi, UP)', lat: 25.4380, lon: 83.0560, v: 'Chaubeypur', d: 'Varanasi', s: 'Uttar Pradesh' },
@@ -147,6 +153,7 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
         { label: '₹1,00,000', value: 100000 },
         { label: '₹2,00,000', value: 200000 },
         { label: '₹3,00,000', value: 300000 },
+        { label: '₹4,00,000', value: 400000 },
         { label: '₹5,00,000+', value: 500000 }
       ],
       isDone: (p) => Boolean(p.available_capital && p.available_capital > 0)
@@ -197,7 +204,8 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
         { key: 'has_water_source', labelEn: '💧 Water / Borewell', labelHi: '💧 पानी / बोरवेल' },
         { key: 'has_electricity', labelEn: '⚡ 3-Phase Power', labelHi: '⚡ 3-फेज बिजली' },
         { key: 'has_vehicle', labelEn: '🚛 Commercial Vehicle', labelHi: '🚛 व्यावसायिक वाहन' },
-        { key: 'has_shop_building', labelEn: '🏪 Roadside Shed / Shop', labelHi: '🏪 सड़क किनारे दुकान/शेड' }
+        { key: 'has_shop_building', labelEn: '🏪 Roadside Shed / Shop', labelHi: '🏪 सड़क किनारे दुकान/शेड' },
+        { key: 'has_machinery', labelEn: '⚙️ Farm Machinery / Tractor', labelHi: '⚙️ कृषि यंत्र / ट्रैक्टर' }
       ],
       isDone: () => true
     },
@@ -221,13 +229,32 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
       isDone: (p) => Boolean(p.skills && p.skills.length > 0)
     },
     {
+      id: 'business_interest',
+      titleEn: 'Business Idea & Intent',
+      titleHi: 'व्यवसाय का विचार',
+      titleTe: 'వ్యాపార ఆలోచన',
+      questionEn: () => "What business or micro-enterprise would you like to start? (e.g. Custom Hiring Centre for Farm Machinery, Commercial Dairy, Mini Flour Mill, Rural Kirana)",
+      questionHi: () => "आप किस प्रकार का व्यवसाय शुरू करना चाहते हैं? (उदा. कृषि यंत्र कस्टम हायरिंग केंद्र, डेयरी फार्मिंग, आटा व मसाला मिल, ग्रामीण किराना)",
+      questionTe: () => "మీరు ఏ వ్యాపారాన్ని ప్రారంభించాలనుకుంటున్నారు? (ఉదా: వ్యవసాయ యంత్రాల అద్దె కేంద్రం, వాణిజ్య పాడి పరిశ్రమ, కిరాణా దుకాణం)",
+      options: [
+        { label: '⚙️ Custom Hiring Centre (Farm Machinery Rental)', value: 'Custom Hiring Centre (Farm Machinery Rental)' },
+        { label: '🐄 Commercial Dairy Farming', value: 'Commercial Dairy Farming' },
+        { label: '📦 Mini Flour, Spices & Oil Expeller Mill', value: 'Mini Flour, Spices & Oil Expeller Mill' },
+        { label: '🍄 Indoor Mushroom Farming', value: 'Indoor Oyster & Button Mushroom Unit' },
+        { label: '🏪 Smart Village Kirana Store', value: 'Smart Village Kirana & Daily Provisions Store' },
+        { label: '🌾 Polyhouse Vegetable Farming', value: 'Polyhouse & Precision Vegetable Farming' },
+        { label: '🐔 Broiler Poultry Farming', value: 'Commercial Broiler Poultry Unit' }
+      ],
+      isDone: (p) => Boolean(p.business_interest && p.business_interest.trim().length > 1)
+    },
+    {
       id: 'review',
       titleEn: 'Review & Submit',
       titleHi: 'पुष्टि व अंतिम सबमिशन',
       titleTe: 'ధృవీకరణ',
-      questionEn: () => "Excellent! All 7 registration parameters are recorded accurately. Review your summary below and submit to calculate your business advisory dossier.",
-      questionHi: () => "शानदार! आपके सभी 7 विवरण सफलतापूर्वक दर्ज हो गए हैं। नीचे दिया गया फाइनल डॉसियर देखें और 'Complete Registration & Generate Advisory' पर क्लिक करें।",
-      questionTe: () => "మీ 7 వివరాలు విజయవంతంగా నమోదయ్యాయి! మీ వ్యాపార నివేదికను రూపొందించడానికి క్రింది బటన్ పై క్లిక్ చేయండి.",
+      questionEn: () => "Excellent! All 8 registration parameters are recorded accurately. Review your summary below and submit to calculate your business advisory dossier.",
+      questionHi: () => "शानदार! आपके सभी 8 विवरण सफलतापूर्वक दर्ज हो गए हैं। नीचे दिया गया फाइनल डॉसियर देखें और 'Complete Registration & Generate Advisory' पर क्लिक करें।",
+      questionTe: () => "మీ 8 వివరాలు విజయవంతంగా నమోదయ్యాయి! మీ వ్యాపార నివేదికను రూపొందించడానికి క్రింది బటన్ పై క్లిక్ చేయండి.",
       isDone: () => true
     }
   ];
@@ -476,6 +503,7 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
     const result = await detectAccurateLocation();
 
     if (result.success) {
+      const isDiffLoc = (profile.village_name && profile.village_name !== result.village_name) || (profile.state && profile.state !== result.state);
       const updated = {
         ...profile,
         latitude: result.latitude,
@@ -483,7 +511,9 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
         village_name: result.village_name,
         district: result.district,
         state: result.state,
-        pincode: result.pincode || profile.pincode
+        pincode: result.pincode || (isDiffLoc ? '' : profile.pincode),
+        post: isDiffLoc ? '' : profile.post,
+        police_station: isDiffLoc ? '' : profile.police_station
       };
 
       setProfile(updated);
@@ -533,11 +563,17 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
 
     const updated = { ...profile };
     if (field === 'location_preset') {
+      const isDiffLoc = (profile.village_name && profile.village_name !== value.v) || (profile.state && profile.state !== value.s);
       updated.latitude = value.lat;
       updated.longitude = value.lon;
       updated.village_name = value.v;
       updated.district = value.d;
       updated.state = value.s;
+      updated.pincode = value.pin || (isDiffLoc ? '' : profile.pincode);
+      if (isDiffLoc) {
+        updated.post = '';
+        updated.police_station = '';
+      }
       setNewlyFilledFields(prev => [...new Set([...prev, 'location'])]);
     } else {
       updated[field] = value;
@@ -590,39 +626,60 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
     const lowerText = textToSend.toLowerCase();
 
     // 1. Step 0: Name extraction
-    if (stepIndex === 0 || !entities.name) {
+    if (stepIndex === 0) {
       const cleanName = textToSend
-        .replace(/^(मेरा\s*नाम\s*(?:hai|hoon)?|my\s*name\s*is|naam\s*hai|i\s*am|main\s*hoon)\s*/i, '')
+        .replace(/^(मेरा\s*नाम\s*(?:hai|hoon)?|my\s*name\s*is|naam\s*hai|i\s*am|main\s*hoon|నా\s*పేరు)\s*/i, '')
         .replace(/\s*(?:hai|hoon|naam)$/i, '')
         .trim();
       
-      if (stepIndex === 0 && cleanName.length >= 2 && !cleanName.match(/^(yes|no|haan|nahi|ok|theek|hello|namaste|hi)$/i)) {
-        entities.name = cleanName;
-      } else if (cleanName.length >= 2 && cleanName.split(' ').length <= 4 && !cleanName.match(/^(yes|no|haan|nahi|ok|hello)$/i)) {
-        entities.name = cleanName;
+      const isInvalidName = /\d|lakh|lac|crore|thousand|rupee|rs|₹|acre|bigha|gaj|yes|no|haan|nahi|ok|hello|namaste|hi/i.test(cleanName);
+      if (!isInvalidName && cleanName.length >= 2 && cleanName.split(/\s+/).length <= 4) {
+        entities.name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+      }
+    } else if (!entities.name) {
+      const explicitNameMatch = textToSend.match(/(?:my\s*name\s*is|मेरा\s*नाम|నా\s*పేరు)\s+([a-zA-Z\u0900-\u097F\u0C00-\u0C7F\s]{2,25})/i);
+      if (explicitNameMatch && explicitNameMatch[1]) {
+        const cand = explicitNameMatch[1].trim();
+        if (!/\d|lakh|lac|crore|thousand|rupee|rs|₹|acre/i.test(cand) && cand.length >= 2) {
+          entities.name = cand.charAt(0).toUpperCase() + cand.slice(1);
+        }
       }
     }
 
     // 2. Step 1: Location extraction
     if (stepIndex === 1 || !entities.location_hint) {
-      const locMatch = textToSend.match(/([a-zA-Z\u0900-\u097F\u0C00-\u0C7F]{3,})\s*(?:village|gaon|se|from|district|zila|mandal)/i);
-      if (locMatch) {
-        entities.location_hint = locMatch[1].trim();
-      } else if (stepIndex === 1 && textToSend.length >= 3 && !textToSend.match(/^(yes|no|haan|nahi|ok|hello)$/i)) {
-        entities.location_hint = textToSend.trim();
+      const parts = textToSend.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2 && stepIndex === 1) {
+        entities.location_hint = parts[0];
+        entities.district_hint = parts[1];
+        if (parts.length >= 3) {
+          entities.state_hint = parts[2];
+        }
+      } else {
+        const locMatch = textToSend.match(/([a-zA-Z\u0900-\u097F\u0C00-\u0C7F]{3,})\s*(?:village|gaon|se|from|district|zila|mandal)/i);
+        if (locMatch) {
+          entities.location_hint = locMatch[1].trim();
+        } else if (stepIndex === 1 && textToSend.length >= 3 && !textToSend.match(/^(yes|no|haan|nahi|ok|hello)$/i)) {
+          entities.location_hint = textToSend.trim();
+        }
       }
     }
 
     // 3. Step 2: Capital extraction
     if (stepIndex === 2 || (entities.capital === null || entities.capital === undefined)) {
-      const lakhMatch = textToSend.match(/(\d+(?:\.\d+)?)\s*(?:lakh|lac|लाख|లక్ష)/i);
+      const lakhMatch = textToSend.match(/(\d+(?:\.\d+)?)\s*(?:lakhs?|lacs?|lakh|lac|लाख|లక్ష|l\b)/i);
       if (lakhMatch) {
         entities.capital = parseFloat(lakhMatch[1]) * 100000;
       } else {
-        const numClean = textToSend.replace(/[^\d.]/g, '');
-        if (numClean && !isNaN(parseFloat(numClean))) {
-          const val = parseFloat(numClean);
-          entities.capital = val < 50 ? val * 100000 : val;
+        const thousandMatch = textToSend.match(/(\d+(?:\.\d+)?)\s*(?:thousands?|thousand|k\b)/i);
+        if (thousandMatch) {
+          entities.capital = parseFloat(thousandMatch[1]) * 1000;
+        } else {
+          const numClean = textToSend.replace(/[^\d.]/g, '');
+          if (numClean && !isNaN(parseFloat(numClean))) {
+            const val = parseFloat(numClean);
+            entities.capital = val < 50 ? val * 100000 : val;
+          }
         }
       }
     }
@@ -632,7 +689,7 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
       if (lowerText.includes('zero') || lowerText.includes('nahi') || lowerText.includes('landless') || lowerText.includes('no land')) {
         entities.land_acres = 0;
       } else {
-        const acreMatch = textToSend.match(/(\d+(?:\.\d+)?)\s*(?:acre|acres|एकड़|ఎకరాలు)?/i);
+        const acreMatch = textToSend.match(/(\d+(?:\.\d+)?)\s*(?:acres?|acre|एकड़|ఎకరాలు)?/i);
         if (acreMatch && !isNaN(parseFloat(acreMatch[1]))) {
           entities.land_acres = parseFloat(acreMatch[1]);
         }
@@ -649,17 +706,20 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
     }
 
     // 6. Step 5: Infrastructure & Utilities
-    if (lowerText.includes('water') || lowerText.includes('paani') || lowerText.includes('borewell')) {
+    if (lowerText.includes('water') || lowerText.includes('paani') || lowerText.includes('borewell') || lowerText.includes('నీరు')) {
       entities.has_water_source = true;
     }
-    if (lowerText.includes('electric') || lowerText.includes('power') || lowerText.includes('bijli') || lowerText.includes('current')) {
+    if (lowerText.includes('electric') || lowerText.includes('power') || lowerText.includes('bijli') || lowerText.includes('current') || lowerText.includes('3-phase') || lowerText.includes('three phase')) {
       entities.has_electricity = true;
     }
-    if (lowerText.includes('vehicle') || lowerText.includes('tractor') || lowerText.includes('gadi') || lowerText.includes('auto')) {
+    if (lowerText.includes('vehicle') || lowerText.includes('tractor') || lowerText.includes('gadi') || lowerText.includes('auto') || lowerText.includes('commercial vehicle')) {
       entities.has_vehicle = true;
     }
-    if (lowerText.includes('shop') || lowerText.includes('dukaan') || lowerText.includes('building') || lowerText.includes('shed')) {
+    if (lowerText.includes('shop') || lowerText.includes('dukaan') || lowerText.includes('building') || lowerText.includes('shed') || lowerText.includes('roadside')) {
       entities.has_shop_building = true;
+    }
+    if (lowerText.includes('machinery') || lowerText.includes('machine') || lowerText.includes('equipment') || lowerText.includes('यंत्र')) {
+      entities.has_machinery = true;
     }
 
     // 7. Step 6: Skills
@@ -667,6 +727,28 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
     const detectedSkills = skillList.filter(s => lowerText.includes(s.replace('_', ' ')) || lowerText.includes(s));
     if (detectedSkills.length > 0) {
       entities.skills = Array.from(new Set([...(entities.skills || []), ...detectedSkills]));
+    }
+    if (detectedSkills.includes('machinery')) {
+      entities.has_machinery = true;
+    }
+
+    // 8. Step 7: Business Intent / Planned Business Idea
+    if (stepIndex === 7 || STEPS[stepIndex]?.id === 'business_interest') {
+      if (textToSend.length >= 3 && !textToSend.match(/^(yes|no|ok|done|continue|next)$/i)) {
+        entities.business_interest = textToSend.trim();
+      }
+    } else if (!entities.business_interest) {
+      if (lowerText.includes('custom hiring') || lowerText.includes('tractor rental') || lowerText.includes('machinery rental')) {
+        entities.business_interest = 'Custom Hiring Centre (Farm Machinery Rental)';
+      } else if (lowerText.includes('dairy farming') || lowerText.includes('milk production')) {
+        entities.business_interest = 'Commercial Dairy Farming';
+      } else if (lowerText.includes('flour mill') || lowerText.includes('food processing') || lowerText.includes('oil mill')) {
+        entities.business_interest = 'Mini Flour, Spices & Oil Expeller Mill';
+      } else if (lowerText.includes('mushroom')) {
+        entities.business_interest = 'Indoor Oyster & Button Mushroom Unit';
+      } else if (lowerText.includes('kirana') || lowerText.includes('provision')) {
+        entities.business_interest = 'Smart Village Kirana & Daily Provisions Store';
+      }
     }
 
     // Apply entities to updated profile
@@ -702,26 +784,58 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
       updated.has_shop_building = entities.has_shop_building;
       filled.push('shop');
     }
+    if (entities.has_machinery !== null && entities.has_machinery !== undefined) {
+      updated.has_machinery = entities.has_machinery;
+      filled.push('machinery');
+    }
     if (entities.skills && entities.skills.length > 0) {
       updated.skills = Array.from(new Set([...(profile.skills || []), ...entities.skills]));
+      if (updated.skills.includes('machinery')) {
+        updated.has_machinery = true;
+      }
       filled.push('skills');
     }
+    if (entities.business_interest) {
+      updated.business_interest = entities.business_interest;
+      filled.push('business_interest');
+    }
     if (entities.location_hint) {
-      const locCoords = {
-        "Nashik": { lat: 20.1706, lon: 73.9840, v: "Pimpalgaon Baswant", d: "Nashik", s: "Maharashtra" },
-        "Krishna": { lat: 16.4258, lon: 80.7712, v: "Kankipadu", d: "Krishna", s: "Andhra Pradesh" },
-        "Varanasi": { lat: 25.4380, lon: 83.0560, v: "Chaubeypur", d: "Varanasi", s: "Uttar Pradesh" },
-        "Anand": { lat: 22.5360, lon: 72.9340, v: "Mogri Rural", d: "Anand", s: "Gujarat" }
-      };
-      const c = locCoords[entities.location_hint];
-      if (c) {
-        updated.latitude = c.lat;
-        updated.longitude = c.lon;
-        updated.village_name = c.v;
-        updated.district = c.d;
-        updated.state = c.s;
-      } else {
+      if (entities.district_hint) {
         updated.village_name = entities.location_hint;
+        updated.district = entities.district_hint;
+        if (entities.state_hint) {
+          updated.state = entities.state_hint;
+        }
+        if (entities.district_hint.toLowerCase().includes('guntur')) {
+          updated.latitude = 16.3067;
+          updated.longitude = 80.4365;
+          if (!updated.state) updated.state = 'Andhra Pradesh';
+        }
+      } else {
+        const locCoords = {
+          "Brodipet": { lat: 16.3067, lon: 80.4365, v: "Brodipet", d: "Guntur", s: "Andhra Pradesh" },
+          "Guntur": { lat: 16.3067, lon: 80.4365, v: "Brodipet", d: "Guntur", s: "Andhra Pradesh" },
+          "Nashik": { lat: 20.1706, lon: 73.9840, v: "Pimpalgaon Baswant", d: "Nashik", s: "Maharashtra" },
+          "Krishna": { lat: 16.4258, lon: 80.7712, v: "Kankipadu", d: "Krishna", s: "Andhra Pradesh" },
+          "Varanasi": { lat: 25.4380, lon: 83.0560, v: "Chaubeypur", d: "Varanasi", s: "Uttar Pradesh" },
+          "Anand": { lat: 22.5360, lon: 72.9340, v: "Mogri Rural", d: "Anand", s: "Gujarat" }
+        };
+        const c = locCoords[entities.location_hint];
+        if (c) {
+          const isDiffLoc = (updated.village_name && updated.village_name !== c.v) || (updated.state && updated.state !== c.s);
+          if (isDiffLoc) {
+            updated.pincode = '';
+            updated.post = '';
+            updated.police_station = '';
+          }
+          updated.latitude = c.lat;
+          updated.longitude = c.lon;
+          updated.village_name = c.v;
+          updated.district = c.d;
+          updated.state = c.s;
+        } else {
+          updated.village_name = entities.location_hint;
+        }
       }
       filled.push('location');
     }
@@ -861,7 +975,7 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
   };
 
   // Calculate completion percentage
-  const totalFields = 7;
+  const totalFields = 8;
   let filledCount = 0;
   if (profile.name && profile.name.trim().length > 1) filledCount++;
   if (profile.available_capital > 0) filledCount++;
@@ -870,6 +984,7 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
   if (profile.skills && profile.skills.length > 0) filledCount++;
   if (profile.social_category) filledCount++;
   if (profile.latitude && profile.longitude) filledCount++;
+  if (profile.business_interest && profile.business_interest.trim().length > 1) filledCount++;
   const completionPct = Math.min(100, Math.round((filledCount / totalFields) * 100));
 
   return (
@@ -1258,18 +1373,41 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
                                 onClick={() => advanceToNextStep(profile, 6, lang === 'hi' ? '✓ अनुभव व कौशल दर्ज कर लिए गए।' : '✓ Skills recorded.')}
                                 className="w-full flex items-center justify-center space-x-2 bg-emerald-700 hover:bg-emerald-800 text-white py-2 rounded-xl text-xs font-bold transition mt-2"
                               >
-                                <span>Complete All Steps & Review Dossier</span>
+                                <span>Continue to Business Idea Step</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           )}
 
-                          {/* Step 7: Review & Final Submit Action */}
+                          {/* Step 7: Business Intent Chips */}
+                          {msg.stepId === 'business_interest' && (
+                            <div className="space-y-2">
+                              <span className="text-[10px] text-slate-500 font-bold block mb-1.5">
+                                Select or enter your planned business idea:
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {STEPS[7].options.map((opt) => (
+                                  <button
+                                    key={opt.value}
+                                    onClick={() => handleChipAnswer('business_interest', opt.value, opt.label)}
+                                    className="text-left bg-white hover:bg-emerald-50 hover:border-emerald-400 border border-slate-200 p-2.5 rounded-xl text-xs font-semibold text-slate-800 transition shadow-xs"
+                                  >
+                                    <div className="font-bold text-emerald-900">{opt.label}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 8: Review & Final Submit Action */}
                           {msg.stepId === 'review' && (
                             <div className="pt-2">
                               <button
-                                onClick={onRunAdvisory}
-                                className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white py-3 px-4 rounded-xl text-xs font-extrabold shadow-lg transition transform hover:-translate-y-0.5"
+                                onClick={async () => {
+                                  const saved = await handleSaveProfileDirect();
+                                  if (onRunAdvisory) onRunAdvisory(saved);
+                                }}
+                                className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white py-3 px-4 rounded-xl text-xs font-extrabold shadow-lg transition transform hover:-translate-y-0.5 cursor-pointer"
                               >
                                 <FileCheck2 className="w-4 h-4 text-amber-300" />
                                 <span>🚀 Complete Registration & Open Decision Advisory</span>
@@ -1457,10 +1595,10 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
                   <div className="text-xs text-white space-y-0.5">
                     <p className="font-semibold">{profile.address || <span className="text-slate-500 italic">Address line not set</span>}</p>
                     <p className="text-[11px] text-slate-300">
-                      PIN: <span className="text-amber-300 font-bold">{profile.pincode || '—'}</span> • Post: <span className="text-emerald-300 font-bold">{profile.post || '—'}</span>
+                      PIN: <span className="text-amber-300 font-bold">{profile.pincode && profile.pincode !== '000000' ? profile.pincode : 'Unavailable'}</span> • Post: <span className="text-emerald-300 font-bold">{profile.post || 'Unavailable'}</span>
                     </p>
                     <p className="text-[11px] text-slate-300">
-                      Police Station: <span className="text-slate-200 font-medium">{profile.police_station || '—'}</span> • State: <span className="text-slate-200 font-medium">{profile.state || '—'}</span>
+                      Police Station: <span className="text-slate-200 font-medium">{profile.police_station || 'Unavailable'}</span> • State: <span className="text-slate-200 font-medium">{profile.state || '—'}</span>
                     </p>
                   </div>
                 </div>
@@ -1525,7 +1663,8 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
                     {profile.has_electricity && <span className="bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">⚡ 3-Phase Power</span>}
                     {profile.has_vehicle && <span className="bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">🚛 Vehicle</span>}
                     {profile.has_shop_building && <span className="bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">🏪 Shop/Shed</span>}
-                    {!profile.has_water_source && !profile.has_electricity && !profile.has_vehicle && !profile.has_shop_building && (
+                    {profile.has_machinery && <span className="bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">⚙️ Machinery</span>}
+                    {!profile.has_water_source && !profile.has_electricity && !profile.has_vehicle && !profile.has_shop_building && !profile.has_machinery && (
                       <span className="text-slate-400 text-[11px]">Basic / Land only</span>
                     )}
                   </div>
@@ -1553,13 +1692,32 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
                     )}
                   </div>
                 </div>
+
+                {/* 8. Business Intent */}
+                <div className={`p-3 rounded-xl border transition-all ${stepIndex === 7 ? 'border-amber-400 bg-amber-950/20 ring-2 ring-amber-400/40' :
+                    newlyFilledFields.includes('business_interest') ? 'bg-emerald-900/60 border-emerald-400 ring-1 ring-emerald-400/30' : 'bg-white/5 border-white/10'
+                  }`}>
+                  <div className="flex justify-between items-center text-slate-400 text-[11px] mb-0.5">
+                    <span className="font-semibold">8. Planned Business Idea / Intent:</span>
+                    <div className="flex items-center space-x-1.5">
+                      {profile.business_interest && <span className="text-emerald-400 font-bold">✓ Captured</span>}
+                      <button onClick={() => handleEditStep(7)} className="text-slate-400 hover:text-white text-[10px] underline">Edit</button>
+                    </div>
+                  </div>
+                  <div className="text-xs font-bold text-amber-200">
+                    {profile.business_interest || <span className="text-slate-500 italic">Custom Hiring, Dairy, Retail, etc...</span>}
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Complete & Run Decision Advisory CTA */}
             <div className="pt-4 mt-4 border-t border-white/10">
               <button
-                onClick={onRunAdvisory}
+                onClick={async () => {
+                  const saved = await handleSaveProfileDirect();
+                  if (onRunAdvisory) onRunAdvisory(saved);
+                }}
                 className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black py-3.5 rounded-xl text-xs shadow-lg transition"
               >
                 <span>Save Dossier & Calculate Business Advisory</span>
@@ -1967,6 +2125,15 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
                 />
                 <span className="font-bold text-slate-800">🏪 Roadside Shed / Shop</span>
               </label>
+              <label className="flex items-center space-x-2.5 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 transition">
+                <input
+                  type="checkbox"
+                  checked={Boolean(profile.has_machinery)}
+                  onChange={(e) => setProfile({ ...profile, has_machinery: e.target.checked })}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                />
+                <span className="font-bold text-slate-800">⚙️ Tractor / Machinery</span>
+              </label>
             </div>
 
             {/* Skills Pills */}
@@ -1993,6 +2160,27 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
             </div>
           </div>
 
+          {/* Step 4: Planned Business Idea & Entrepreneur Intent */}
+          <div className="pt-4 border-t border-slate-100 space-y-3">
+            <h3 className="text-base font-bold text-slate-900 flex items-center">
+              <Sparkles className="w-5 h-5 mr-2 text-emerald-600" />
+              Step 4: Planned Business Idea & Entrepreneur Intent
+            </h3>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1.5 text-xs">Specific Business Idea / Enterprise Type *</label>
+              <input
+                type="text"
+                value={profile.business_interest || ''}
+                onChange={(e) => setProfile({ ...profile, business_interest: e.target.value })}
+                placeholder="e.g. Custom Hiring Centre (Farm Machinery Rental), Commercial Dairy Farming, Rural Kirana..."
+                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-stone-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Specify what micro-enterprise you want to establish. AI will tailor financial structuring and scheme matching to your intent.
+              </span>
+            </div>
+          </div>
+
           <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
             <button
               type="button"
@@ -2004,7 +2192,10 @@ export default function ProfileWizard({ profile, setProfile, onRunAdvisory, lang
             </button>
 
             <button
-              onClick={onRunAdvisory}
+              onClick={async () => {
+                const saved = await handleSaveProfileDirect();
+                if (onRunAdvisory) onRunAdvisory(saved);
+              }}
               className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white px-8 py-3.5 rounded-xl font-black text-sm shadow-md transition transform hover:-translate-y-0.5 cursor-pointer"
             >
               <FileCheck2 className="w-5 h-5" />

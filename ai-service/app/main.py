@@ -1,3 +1,29 @@
+import os
+from pathlib import Path
+
+# Load ai-service/.env reliably before initializing submodules or engines
+def _init_env():
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    if env_file.exists():
+        try:
+            
+            # pyrefly: ignore[missing-import]
+            from dotenv import load_dotenv
+            load_dotenv(dotenv_path=env_file)
+        except ImportError:
+            # Fallback parser if python-dotenv is pending installation
+            try:
+                with open(env_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            os.environ.setdefault(k.strip(), v.strip().strip('"\''))
+            except Exception as e:
+                print(f"[AI Service Config Warning] Fallback .env read error: {e}")
+
+_init_env()
+
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -102,9 +128,20 @@ class AgentChatRequest(BaseModel):
 # -----------------------------------------------------------------------------
 @app.get("/health")
 def health():
+    llm_available = False
+    model_name = "gemini-1.5-flash"
+    if hasattr(udyam_sarthi_agent, "llm_provider"):
+        llm_available = udyam_sarthi_agent.llm_provider.is_available()
+        model_name = udyam_sarthi_agent.llm_provider.model_name
+
     return {
         "status": "healthy",
         "service": "UdyamSarthi AI Microservice",
+        "llm_provider": {
+            "gemini_active": llm_available,
+            "model": model_name,
+            "fallback_engine": "deterministic_rule_based"
+        },
         "engines_loaded": ["Market", "Finance", "Scheme", "Risk", "Recommendation", "Simulation", "RAG", "NLU", "UdyamSarthiAgent"]
     }
 
@@ -165,18 +202,28 @@ def get_recommendations(req: Dict[str, Any] = Body(...)):
     """Executes full multi-factor decision pipeline to generate explainable recommendations."""
     norm = udyam_sarthi_agent.normalize_profile(req)
     
-    cap = norm.get("financial", {}).get("capital") or req.get("available_capital") or req.get("capital") or 300000.0
+    cap = (
+        req.get("available_capital") 
+        if req.get("available_capital") is not None 
+        else (req.get("capital") if req.get("capital") is not None else (norm.get("financial", {}).get("capital") or 300000.0))
+    )
+    cap = float(cap)
     land = norm.get("land_workspace", {}).get("land_area") or req.get("land_acres") or 1.0
     radius = req.get("analysis_radius_km") or 10.0
     lang = norm.get("personal", {}).get("language") or req.get("preferred_language") or "hi"
     
     profile_dict = {
-        "name": norm.get("personal", {}).get("name") or req.get("name") or "Entrepreneur",
-        "social_category": norm.get("government", {}).get("social_category") or req.get("social_category") or "OBC",
+        "name": req.get("name") or norm.get("personal", {}).get("name") or "Entrepreneur",
+        "social_category": req.get("social_category") or norm.get("government", {}).get("social_category") or "OBC",
         "gender": req.get("gender") or "MALE",
         "annual_family_income": req.get("annual_family_income") or 180000.0,
-        "latitude": req.get("latitude") or 20.1706,
-        "longitude": req.get("longitude") or 73.9840,
+        "village_name": req.get("village_name") or norm.get("location", {}).get("village") or "",
+        "district": req.get("district") or norm.get("location", {}).get("district") or "",
+        "state": req.get("state") or norm.get("location", {}).get("state") or "",
+        "pincode": req.get("pincode") or "",
+        "mandal_or_block": req.get("mandal_or_block") or "",
+        "latitude": req.get("latitude") or 20.0,
+        "longitude": req.get("longitude") or 78.0,
         "available_capital": cap,
         "liquid_reserve": req.get("liquid_reserve") or 20000.0,
         "land_acres": land,
@@ -184,20 +231,23 @@ def get_recommendations(req: Dict[str, Any] = Body(...)):
         "has_vehicle": bool(req.get("has_vehicle")),
         "has_machinery": bool(req.get("has_machinery")),
         "has_electricity": bool(req.get("has_electricity", True)),
-        "has_water_source": bool(norm.get("resources", {}).get("water") or req.get("has_water_source", True)),
+        "has_water_source": bool(req.get("has_water_source", True) if "has_water_source" in req else norm.get("resources", {}).get("water", True)),
         "has_internet": bool(req.get("has_internet", True)),
         "skills": req.get("skills") or ["farming"],
-        "experience_years": norm.get("farmer", {}).get("farming_experience_years") or req.get("experience_years") or 3,
-        "business_interest": norm.get("business", {}).get("business_idea") or req.get("business_interest"),
+        "experience_years": req.get("experience_years") or norm.get("farmer", {}).get("farming_experience_years") or 3,
+        "business_interest": req.get("business_interest") or req.get("planned_business_intent") or req.get("business_idea") or norm.get("business", {}).get("business_idea") or "",
         "preferred_language": lang,
         "analysis_radius_km": radius
     }
     
     results = recommendation_engine.evaluate_recommendations(profile_dict, radius)
+    results["entrepreneur_profile"] = profile_dict
+    results["capital"] = cap
     
     # Attach explainability to the top recommendation
     if results.get("top_recommendation"):
         top_rec = results["top_recommendation"]
+        top_rec["capital"] = cap
         explanation = explainability_engine.generate_explanation(top_rec, lang)
         results["top_recommendation"]["explanation"] = explanation
 

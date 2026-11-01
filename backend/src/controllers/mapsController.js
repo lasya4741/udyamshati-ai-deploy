@@ -214,7 +214,10 @@ exports.getNearbyPlaces = async (req, res) => {
 
             let photoUrl = null;
             if (p.photos && p.photos.length > 0) {
-              photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${p.photos[0].photo_reference}&key=${key}`;
+              const photoRef = p.photos[0].photo_reference;
+              photoUrl = apiKey
+                ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${apiKey}`
+                : `/api/maps/photo?reference=${photoRef}&maxwidth=400`;
             }
 
             return {
@@ -241,6 +244,8 @@ exports.getNearbyPlaces = async (req, res) => {
           });
           // STRICT Haversine distance filter: <= radius
           googleResults = googleResults.filter((p) => p.straight_distance_km <= radius);
+        } else if (gRes.data && gRes.data.status && gRes.data.status !== 'ZERO_RESULTS') {
+          console.warn(`[Google Places Notice] NearbySearch status: ${gRes.data.status}${gRes.data.error_message ? ` - ${gRes.data.error_message}` : ''}. Using local PostGIS catalog.`);
         }
       } catch (gErr) {
         console.warn('Google Places API call skipped/failed, using PostGIS local catalog:', gErr.message);
@@ -368,7 +373,10 @@ exports.searchPlaces = async (req, res) => {
 
               let photoUrl = null;
               if (p.photos && p.photos.length > 0) {
-                photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${p.photos[0].photo_reference}&key=${key}`;
+                const photoRef = p.photos[0].photo_reference;
+                photoUrl = (data.apiKey)
+                  ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${data.apiKey}`
+                  : `/api/maps/photo?reference=${photoRef}&maxwidth=400`;
               }
 
               return {
@@ -541,7 +549,9 @@ exports.getPlaceDetails = async (req, res) => {
         if (resp.data && resp.data.result) {
           const r = resp.data.result;
           const photos = (r.photos || []).map((ph) => ({
-            photo_url: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${ph.photo_reference}&key=${key}`,
+            photo_url: apiKey
+              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${ph.photo_reference}&key=${apiKey}`
+              : `/api/maps/photo?reference=${ph.photo_reference}&maxwidth=800`,
             attribution: ph.html_attributions ? ph.html_attributions[0] : 'Google Maps'
           }));
 
@@ -599,7 +609,9 @@ exports.checkStreetView = async (req, res) => {
             pano_id: gRes.data.pano_id,
             location: gRes.data.location,
             date: gRes.data.date,
-            embed_url: `https://www.google.com/maps/embed/v1/streetview?key=${key}&location=${lat},${lon}`
+            embed_url: apiKey
+              ? `https://www.google.com/maps/embed/v1/streetview?key=${apiKey}&location=${lat},${lon}`
+              : null
           });
         }
       } catch (err) {
@@ -816,3 +828,25 @@ exports.getMarketAnalysis = async (req, res) => {
 exports.getCategories = (req, res) => {
   res.json(localCategories);
 };
+
+// 8. GET /api/maps/photo (Secure server photo proxy to prevent client-side key leakage)
+exports.getPlacePhoto = async (req, res) => {
+  try {
+    const { reference, maxwidth = 400 } = req.query;
+    if (!reference) {
+      return res.status(400).json({ error: 'Photo reference is required' });
+    }
+    const key = config.GOOGLE_MAPS_SERVER_KEY;
+    if (!key) {
+      return res.status(404).json({ error: 'Google Maps Server Key not configured' });
+    }
+    const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${parseInt(maxwidth, 10) || 400}&photo_reference=${encodeURIComponent(reference)}&key=${key}`;
+    const response = await axios.get(photoUrl, { responseType: 'stream', timeout: 6000 });
+    res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    response.data.pipe(res);
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to retrieve place photo from Google Maps Platform' });
+  }
+};
+

@@ -71,14 +71,15 @@ export const authService = {
    * Official Google Identity Services Web Authentication
    */
   signInWithGoogle: async () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+    const clientId = rawClientId.trim().replace(/^['"]|['"]$/g, '');
 
     // 1. Check if VITE_GOOGLE_CLIENT_ID is configured in environment
-    if (!clientId) {
+    if (!clientId || clientId.includes('your_google_oauth_client_id_here') || !clientId.includes('.apps.googleusercontent.com')) {
       return {
         status: 'UNCONFIGURED',
         provider: 'google',
-        message: 'Google Sign-In is not configured yet. Please configure VITE_GOOGLE_CLIENT_ID to enable Google authentication.',
+        message: 'Google Sign-In is not configured yet. Please configure a valid VITE_GOOGLE_CLIENT_ID in frontend/.env to enable Google authentication.',
       };
     }
 
@@ -160,6 +161,40 @@ export const authService = {
     }
 
     const cleanDigits = identifier.replace(/\D/g, '');
+    const isEmail = identifier.includes('@');
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+
+    // 1. Try Backend API first if identifier is email or backend user
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedIdentifier, password })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const session = {
+          isAuthenticated: true,
+          provider: 'password',
+          loginTime: Date.now(),
+          token: data.token,
+          user: {
+            id: data.user.id,
+            name: data.user.name,
+            email: data.user.email,
+            role: data.user.role,
+            preferredLanguage: data.user.preferredLanguage,
+            isDemo: false
+          }
+        };
+        authService.saveSession(session);
+        return { status: 'SUCCESS', session };
+      }
+    } catch (e) {
+      // Backend unavailable; continue to local registry check
+    }
+
+    // 2. Check local registered users
     let registeredUsers = [];
     try {
       const stored = localStorage.getItem(USERS_REGISTRY_KEY);
@@ -168,36 +203,46 @@ export const authService = {
       console.error('Error reading user registry:', e);
     }
 
-    // Match against registered users or create structured session
     const matchedUser = registeredUsers.find(
-      (u) => (cleanDigits && u.mobile === cleanDigits) || u.email === identifier.trim().toLowerCase()
+      (u) => (cleanDigits && u.mobile === cleanDigits) || (u.email && u.email.toLowerCase() === normalizedIdentifier)
     );
 
-    const userObj = matchedUser
-      ? {
-          id: `user_${matchedUser.mobile}`,
+    if (matchedUser) {
+      if (matchedUser.password && matchedUser.password !== password) {
+        return { status: 'ERROR', message: 'Incorrect password. Please check your credentials.' };
+      }
+      const session = {
+        isAuthenticated: true,
+        provider: 'password',
+        loginTime: Date.now(),
+        user: {
+          id: `user_${matchedUser.mobile || Date.now()}`,
           name: matchedUser.fullName,
           mobile: matchedUser.mobile,
           email: matchedUser.email,
           isDemo: false,
-        }
-      : {
-          id: `user_${cleanDigits || Date.now()}`,
-          name: identifier.includes('@') ? identifier.split('@')[0] : 'Rural Entrepreneur',
-          mobile: cleanDigits.length === 10 ? cleanDigits : '9876543210',
-          email: identifier.includes('@') ? identifier : undefined,
-          isDemo: false,
-        };
+        },
+      };
+      authService.saveSession(session);
+      return { status: 'SUCCESS', session };
+    }
 
-    const session = {
-      isAuthenticated: true,
-      provider: 'password',
-      loginTime: Date.now(),
-      user: userObj,
+    // 3. Demo accounts check
+    const isDemoMobile = cleanDigits === '9876543210' && (password === 'kisan123' || password === 'demo123');
+    const isDemoEmail = (normalizedIdentifier === 'kisan@sih.gov.in' && password === 'kisan123') ||
+                        (normalizedIdentifier === 'lakshmi@sih.gov.in' && password === 'lakshmi123');
+
+    if (isDemoMobile || isDemoEmail) {
+      return authService.signInAsDemo();
+    }
+
+    // If not found in backend, local registry, or demo credentials, reject honestly
+    return {
+      status: 'ERROR',
+      message: isEmail
+        ? 'Invalid email or password. Please check your credentials.'
+        : 'Mobile number not registered. Please sign up first or use Demo Login.'
     };
-
-    authService.saveSession(session);
-    return { status: 'SUCCESS', session };
   },
 
   /**
@@ -361,7 +406,54 @@ export const authService = {
    */
   registerUser: async (userData) => {
     const { fullName, mobile, email, password } = userData;
+    const cleanMobile = mobile ? mobile.replace(/\D/g, '') : '';
+    const cleanEmail = email ? email.trim().toLowerCase() : (cleanMobile ? `${cleanMobile}@udyam.gov.in` : '');
 
+    // 1. Try PostgreSQL Backend Registration API
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: fullName ? fullName.trim() : '',
+          email: cleanEmail,
+          password,
+          mobile: cleanMobile,
+          preferredLanguage: 'hi'
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        const session = {
+          isAuthenticated: true,
+          provider: 'password',
+          loginTime: Date.now(),
+          token: data.token,
+          user: {
+            id: data.user.id,
+            name: data.user.name,
+            email: data.user.email,
+            role: data.user.role,
+            mobile: cleanMobile,
+            preferredLanguage: data.user.preferredLanguage,
+            isDemo: false
+          }
+        };
+        authService.saveSession(session);
+        return { status: 'SUCCESS', session };
+      } else {
+        return {
+          status: 'ERROR',
+          message: data.error || 'Registration failed. Please check your credentials.'
+        };
+      }
+    } catch (e) {
+      console.warn('Backend registration API error:', e);
+    }
+
+    // Local fallback if backend is unreachable
     let registeredUsers = [];
     try {
       const stored = localStorage.getItem(USERS_REGISTRY_KEY);
@@ -372,8 +464,8 @@ export const authService = {
 
     const newUser = {
       fullName: fullName.trim(),
-      mobile: mobile.replace(/\D/g, ''),
-      email: email ? email.trim().toLowerCase() : '',
+      mobile: cleanMobile,
+      email: cleanEmail,
       password,
       createdAt: Date.now(),
     };
@@ -390,7 +482,7 @@ export const authService = {
       provider: 'password',
       loginTime: Date.now(),
       user: {
-        id: `user_${newUser.mobile}`,
+        id: `user_${newUser.mobile || Date.now()}`,
         name: newUser.fullName,
         mobile: newUser.mobile,
         email: newUser.email,
@@ -406,6 +498,35 @@ export const authService = {
    * SIH Demo Login
    */
   signInAsDemo: async () => {
+    try {
+      const res = await fetch('/api/auth/demo-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const session = {
+          isAuthenticated: true,
+          provider: 'demo',
+          loginTime: Date.now(),
+          token: data.token,
+          user: {
+            id: data.user.id,
+            name: data.user.name,
+            mobile: '9876543210',
+            email: data.user.email,
+            role: data.user.role,
+            preferredLanguage: data.user.preferredLanguage,
+            isDemo: true,
+          },
+        };
+        authService.saveSession(session);
+        return { status: 'SUCCESS', session };
+      }
+    } catch (e) {
+      console.warn('Backend demo-login unavailable, using local demo profile:', e);
+    }
+
     const session = {
       isAuthenticated: true,
       provider: 'demo',
@@ -464,7 +585,7 @@ export const authService = {
           return { status: 'ERROR', message: 'Current password is incorrect.' };
         }
       } else if (!validDemo.includes(oldPassword)) {
-        return { status: 'ERROR', message: 'Current password is incorrect (Default: kisan123).' };
+        return { status: 'ERROR', message: 'Current password is incorrect.' };
       }
       try {
         localStorage.setItem('udyam_demo_password', newPassword);
