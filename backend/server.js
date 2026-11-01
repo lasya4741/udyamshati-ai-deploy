@@ -35,9 +35,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal Server Error' });
 });
 
-app.listen(config.PORT, () => {
-  console.log('=======================================================');
-  console.log(`🚀 UdyamSarthi Backend Orchestrator running on port ${config.PORT}`);
-  console.log(`🔗 AI Microservice Target: ${config.AI_SERVICE_URL}`);
-  console.log('=======================================================');
-});
+if (require.main === module) {
+  app.listen(config.PORT, () => {
+    console.log('=======================================================');
+    console.log(`🚀 UdyamSarthi Backend Orchestrator running on port ${config.PORT}`);
+    console.log(`🔗 AI Microservice Target: ${config.AI_SERVICE_URL}`);
+    console.log('=======================================================');
+  });
+}
+
+module.exports = app;
+

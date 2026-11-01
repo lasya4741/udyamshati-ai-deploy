@@ -34,11 +34,28 @@ if (!jwtSecret) {
 }
 
 // 3. AI Microservice Target URL Validation
-let aiServiceUrl = (process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001').trim();
-if (!aiServiceUrl.startsWith('http://') && !aiServiceUrl.startsWith('https://')) {
-  console.warn(`[Backend Config Warning] AI_SERVICE_URL "${aiServiceUrl}" must start with http:// or https://. Defaulting to http://127.0.0.1:8001.`);
-  aiServiceUrl = 'http://127.0.0.1:8001';
+let rawAiUrl = (process.env.AI_SERVICE_URL || '').trim();
+
+if (!rawAiUrl) {
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    rawAiUrl = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/ai`;
+  } else if (process.env.VERCEL_URL) {
+    rawAiUrl = `https://${process.env.VERCEL_URL}/ai`;
+  } else {
+    rawAiUrl = 'http://127.0.0.1:8001';
+  }
 }
+
+if (!rawAiUrl.startsWith('http://') && !rawAiUrl.startsWith('https://')) {
+  if (rawAiUrl.startsWith('/')) {
+    const baseHost = process.env.VERCEL_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    rawAiUrl = baseHost ? `https://${baseHost}${rawAiUrl}` : `http://127.0.0.1:8001`;
+  } else {
+    rawAiUrl = `https://${rawAiUrl}`;
+  }
+}
+
+const aiServiceUrl = rawAiUrl;
 
 // 4. Google Maps Server Key
 const rawMapsKey = process.env.GOOGLE_MAPS_SERVER_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
